@@ -9,13 +9,30 @@ from .cloud_engine import CloudEngine
 from .router import IntentTaskRouter
 from .slm_pipeline import LocalSLMPipeline
 from .local_stt import LocalSTTService
+from .snapdragon_engine import (
+    SnapdragonNPUEngine,
+    SnapdragonConfig,
+    HardwareNotSupportedError,
+    BaseEngine
+)
+
+# Compatibility aliases
+SmolLM2Engine = LocalEngine
+GroqEngine = CloudEngine
 
 __all__ = [
     "BaseAIEngine",
+    "BaseEngine",
     "EngineResponse",
     "LocalEngine",
     "CloudEngine",
+    "SmolLM2Engine",
+    "GroqEngine",
+    "SnapdragonNPUEngine",
+    "SnapdragonConfig",
+    "HardwareNotSupportedError",
     "IntentTaskRouter",
     "LocalSLMPipeline",
     "LocalSTTService"
 ]
+

@@ -5,10 +5,20 @@ from typing import Optional, Dict, Any
 from .base_engine import BaseAIEngine, EngineResponse
 from .local_engine import LocalEngine
 from .cloud_engine import CloudEngine
+from .snapdragon_engine import SnapdragonNPUEngine, HardwareNotSupportedError
+
+# Compatibility aliases
+SmolLM2Engine = LocalEngine
+GroqEngine = CloudEngine
 
 ai_engine_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ai_engine_dir not in sys.path:
     sys.path.insert(0, ai_engine_dir)
+
+try:
+    from hardware.detector import HardwareDetector
+except ImportError:
+    from ai_engine.hardware.detector import HardwareDetector
 
 try:
     from web_search import (
@@ -31,22 +41,50 @@ except ImportError:
 class IntentTaskRouter:
     """
     Intelligent Intent & Task Router for AIGIS.
-    Directs tasks following a strict 6-tier policy:
-      1. Executable Actions (Desktop apps, media controls, web navigation) -> Local on-device
-      2. Deterministic System Info (OS clock, hardware telemetry, privacy) -> Local on-device
-      3. Live/Current Web Info (Sports, news, weather, live facts) -> Tavily + RSS Search (Never SmolLM2)
-      4. General AI (Auto Mode) -> Groq when configured/reachable, SmolLM2 when offline/unconfigured
-      5. Explicit Local Mode -> SmolLM2 only for general AI, local disclaimer for live web
-      6. Explicit Cloud Mode -> CloudEngine only, never silent local fallback
+    Directs tasks following a strict hierarchy:
+      - Actions & System Info -> Deterministic local execution on-device
+      - Live/Current Web Info -> Tavily + RSS Search (Anti-hallucination guard)
+      - On-Device Intelligence:
+          * Tier 1 (NPU Target): Qualcomm AI Hub model via QNN (Snapdragon ARM64)
+          * Tier 2 (Local Fallback): SmolLM2-135M via CPU (portable, private)
+      - General AI / Cloud:
+          * Tier 3 (Cloud / Live Web): Groq Llama-3.3-70b / Tavily facts
     """
 
     def __init__(
         self,
         local_engine: Optional[LocalEngine] = None,
-        cloud_engine: Optional[CloudEngine] = None
+        cloud_engine: Optional[CloudEngine] = None,
+        snapdragon_engine: Optional[SnapdragonNPUEngine] = None,
+        hardware_detector: Optional[Any] = None
     ):
         self.local_engine = local_engine or LocalEngine()
         self.cloud_engine = cloud_engine or CloudEngine()
+        self.detector = hardware_detector or HardwareDetector
+
+        # Registered engine aliases
+        self.smollm2_engine = self.local_engine
+        self.groq_engine = self.cloud_engine
+
+        if snapdragon_engine is not None:
+            self.snapdragon_engine = snapdragon_engine
+        else:
+            self.snapdragon_engine = SnapdragonNPUEngine(
+                hardware_detector=self.detector,
+                fallback_engine=self.local_engine,
+                auto_fallback=True
+            )
+
+    def get_active_local_engine(self) -> BaseAIEngine:
+        """
+        Hardware-Aware Polymorphic Engine Selector:
+        Tier 1: SnapdragonNPUEngine (ARM64 + QNN Hexagon NPU)
+        Tier 2: SmolLM2Engine / LocalEngine (portable x86_64 CPU fallback)
+        """
+        if self.snapdragon_engine and self.snapdragon_engine.is_available():
+            return self.snapdragon_engine
+        return self.local_engine
+
 
     def classify_intent(self, prompt: str) -> Dict[str, Any]:
         """Classifies prompt into ACTION, SYSTEM_INFO, LIVE_WEB, or GENERAL_AI."""
@@ -144,7 +182,8 @@ class IntentTaskRouter:
                     }
                 )
 
-            resp = self.local_engine.generate_response(
+            active_engine = self.get_active_local_engine()
+            resp = active_engine.generate_response(
                 prompt=prompt,
                 session_id=session_id,
                 response_language=response_language,
@@ -284,7 +323,8 @@ class IntentTaskRouter:
                     resp.metadata["routingReason"] = classification["reason"]
                     return resp
                 else:
-                    resp = self.local_engine.generate_response(
+                    active_engine = self.get_active_local_engine()
+                    resp = active_engine.generate_response(
                         prompt=prompt,
                         session_id=session_id,
                         response_language=response_language,
@@ -305,8 +345,12 @@ class IntentTaskRouter:
         return cleaned or "Verified real-time information was retrieved from live web sources."
 
     def get_router_status(self) -> Dict[str, Any]:
+        active_backend = "snapdragon_npu" if (self.snapdragon_engine and self.snapdragon_engine.is_available()) else "smollm2_cpu"
         return {
             "localEngine": self.local_engine.get_engine_info(),
             "cloudEngine": self.cloud_engine.get_engine_info(),
+            "snapdragonEngine": self.snapdragon_engine.get_engine_info() if self.snapdragon_engine else None,
+            "activeLocalBackend": active_backend,
             "supportedModes": ["auto", "local", "cloud"]
         }
+
