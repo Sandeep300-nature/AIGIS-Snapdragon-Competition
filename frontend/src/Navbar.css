@@ -1,0 +1,367 @@
+/* Navbar Container Wrapper for top-center positioning */
+.navbar-wrapper {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(92%, 1150px);
+  z-index: 1000;
+  pointer-events: none;
+}
+
+/* Ambient Aqua / Cyan Glow under the pill navbar */
+.navbar-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 98%;
+  height: 120%;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0, 240, 255, 0.35) 0%,
+    rgba(0, 220, 180, 0.2) 45%,
+    rgba(0, 240, 255, 0) 75%
+  );
+  filter: blur(22px);
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 50px;
+  opacity: 0.85;
+}
+
+/* Floating Pill Navbar */
+.navbar {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 40px;
+  box-sizing: border-box;
+  background: rgba(14, 18, 24, 0.65);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 50px;
+  box-shadow: 
+    0 12px 35px rgba(0, 0, 0, 0.6),
+    inset 0 1px 1px rgba(255, 255, 255, 0.2),
+    0 0 20px rgba(0, 240, 255, 0.15);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.navbar:hover {
+  border-color: rgba(0, 240, 255, 0.4);
+  box-shadow: 
+    0 14px 40px rgba(0, 0, 0, 0.7),
+    inset 0 1px 1px rgba(255, 255, 255, 0.3),
+    0 0 25px rgba(0, 240, 255, 0.25);
+}
+
+/* Brand Section (A.I.G.I.S.) */
+.nav-brand {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.brand-name {
+  font-family: 'Orbitron', 'Rajdhani', -apple-system, sans-serif;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 3.5px;
+  color: #00f0ff;
+  text-shadow: 
+    0 0 8px rgba(0, 240, 255, 0.8),
+    0 0 18px rgba(0, 240, 255, 0.4);
+  transition: text-shadow 0.3s ease;
+}
+
+.brand-name:hover {
+  text-shadow: 
+    0 0 12px rgba(0, 240, 255, 1),
+    0 0 25px rgba(0, 240, 255, 0.7);
+}
+
+/* Navigation Links Container */
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 36px;
+}
+
+.nav-item-wrapper {
+  position: relative;
+}
+
+/* Nav Item Buttons */
+.nav-link {
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 6px 4px;
+  font-family: 'Orbitron', 'Rajdhani', -apple-system, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2.5px;
+  color: #cbd5e1;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  position: relative;
+}
+
+.nav-link::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0%;
+  height: 2px;
+  background: #00f0ff;
+  border-radius: 2px;
+  box-shadow: 0 0 10px #00f0ff;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.nav-link:hover,
+.nav-link.active {
+  color: #ffffff;
+  text-shadow: 
+    0 0 10px rgba(0, 240, 255, 0.7),
+    0 0 20px rgba(0, 240, 255, 0.3);
+}
+
+.nav-link:hover::after,
+.nav-link.active::after {
+  width: 100%;
+}
+
+/* Settings Glassmorphic Menu */
+.settings-menu {
+  position: absolute;
+  top: calc(100% + 16px);
+  right: -10px;
+  width: 310px;
+  padding: 18px 20px;
+  border-radius: 20px;
+  background: rgba(10, 14, 22, 0.88);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  box-shadow: 
+    0 16px 45px rgba(0, 0, 0, 0.75),
+    0 0 30px rgba(0, 240, 255, 0.2),
+    inset 0 1px 1px rgba(255, 255, 255, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: fadeInDown 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 1001;
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.settings-header h3 {
+  margin: 0;
+  font-family: 'Orbitron', 'Rajdhani', sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #00f0ff;
+  border-bottom: 1px solid rgba(0, 240, 255, 0.2);
+  padding-bottom: 10px;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+}
+
+/* Control Groups inside Settings */
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: rgba(0, 240, 255, 0.03);
+  border: 1px solid rgba(0, 240, 255, 0.12);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.control-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.control-label {
+  font-family: 'Orbitron', 'Rajdhani', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+
+/* Mic Toggle Pill Button */
+.mic-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 20px;
+  padding: 4px 10px;
+  color: #94a3b8;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.mic-toggle-btn .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #64748b;
+  transition: all 0.25s ease;
+}
+
+.mic-toggle-btn.active {
+  background: rgba(0, 240, 255, 0.18);
+  border-color: #00f0ff;
+  color: #00f0ff;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+}
+
+.mic-toggle-btn.active .dot {
+  background: #00f0ff;
+  box-shadow: 0 0 8px #00f0ff;
+}
+
+/* Slider Controls */
+.slider-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.slider-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #cbd5e1;
+}
+
+.val-text {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  color: #00f0ff;
+  font-weight: 600;
+}
+
+.styled-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 5px;
+  background: rgba(0, 240, 255, 0.15);
+  border-radius: 3px;
+  outline: none;
+  transition: background 0.2s ease;
+}
+
+.styled-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #00f0ff;
+  box-shadow: 0 0 10px #00f0ff;
+  cursor: pointer;
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.styled-range::-webkit-slider-thumb:hover {
+  transform: scale(1.25);
+  background: #ffffff;
+}
+
+/* Color Presets */
+.color-presets {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+
+.color-label {
+  font-size: 11px;
+  color: #cbd5e1;
+}
+
+.swatches {
+  display: flex;
+  gap: 8px;
+}
+
+.color-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.color-swatch:hover {
+  transform: scale(1.2);
+}
+
+.color-swatch.active {
+  border-color: #ffffff;
+  box-shadow: 0 0 10px currentColor;
+  transform: scale(1.15);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .navbar-wrapper {
+    top: 14px;
+    width: 95%;
+  }
+
+  .navbar {
+    padding: 10px 20px;
+  }
+
+  .brand-name {
+    font-size: 16px;
+    letter-spacing: 2px;
+  }
+
+  .nav-links {
+    gap: 16px;
+  }
+
+  .nav-link {
+    font-size: 11px;
+    letter-spacing: 1.5px;
+  }
+
+  .settings-menu {
+    width: 270px;
+    right: -20px;
+  }
+}

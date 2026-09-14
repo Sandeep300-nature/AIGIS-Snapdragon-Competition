@@ -1,0 +1,207 @@
+.telemetry-card {
+  position: fixed;
+  width: 230px;
+  max-height: 480px;
+  padding: 14px 16px;
+  background: rgba(10, 25, 45, 0.88);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  border-radius: 18px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), 0 0 20px rgba(0, 240, 255, 0.14);
+  color: #e2e8f0;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 150;
+  user-select: none;
+  touch-action: none;
+  transition: left 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), 
+              top 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), 
+              transform 0.5s ease, 
+              box-shadow 0.5s ease, 
+              border-color 0.3s ease;
+  pointer-events: auto;
+  overflow: hidden;
+}
+
+.telemetry-card:hover {
+  border-color: rgba(0, 255, 225, 0.65);
+  box-shadow: 0 12px 40px rgba(0, 240, 255, 0.3);
+}
+
+.telemetry-card.is-dragging {
+  transition: none !important;
+  border-color: #00ffe1;
+  box-shadow: 0 14px 45px rgba(0, 255, 225, 0.45);
+  opacity: 0.95;
+}
+
+.telemetry-card.is-focused {
+  transform: translate(-50%, -50%) scale(1.12);
+  z-index: 2000;
+  border-color: #00ffe1;
+  box-shadow: 0 0 55px rgba(0, 240, 255, 0.75), 0 20px 60px rgba(0, 0, 0, 0.8);
+}
+
+.telemetry-drag-handle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 6px;
+  margin-bottom: 2px;
+  border-bottom: 1px dashed rgba(0, 240, 255, 0.3);
+  flex-shrink: 0;
+}
+
+.drag-dots {
+  color: #00f0ff;
+  font-size: 14px;
+  font-weight: bold;
+  letter-spacing: -2px;
+}
+
+.telemetry-header-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: #00ffe1;
+  letter-spacing: 1.5px;
+}
+
+.focus-badge {
+  font-size: 8px;
+  background: rgba(0, 240, 255, 0.2);
+  border: 1px solid rgba(0, 240, 255, 0.5);
+  color: #00ffe1;
+  padding: 2px 6px;
+  border-radius: 6px;
+  margin-left: auto;
+  letter-spacing: 0.5px;
+}
+
+/* Vertically Scrollable Content Area with Theme Scrollbar */
+.telemetry-content-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.telemetry-content-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.telemetry-content-scroll::-webkit-scrollbar-track {
+  background: rgba(10, 25, 45, 0.5);
+  border-radius: 4px;
+}
+
+.telemetry-content-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 240, 255, 0.35);
+  border-radius: 4px;
+}
+
+.telemetry-content-scroll::-webkit-scrollbar-thumb:hover {
+  background: #00ffe1;
+}
+
+/* Telemetry Grouping & Spacing */
+.telemetry-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.telemetry-group-title {
+  font-size: 9px;
+  font-weight: 700;
+  color: rgba(0, 240, 255, 0.7);
+  letter-spacing: 1px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid rgba(0, 240, 255, 0.12);
+  margin-bottom: 2px;
+  text-transform: uppercase;
+}
+
+/* Two-Column Item Layout */
+.telemetry-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11.5px;
+  letter-spacing: 0.3px;
+  position: relative;
+  min-height: 18px;
+}
+
+.telemetry-label {
+  color: #94a3b8;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.telemetry-value-container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  justify-content: flex-end;
+}
+
+/* Subtle Progress Bar Background for Usage Percentages */
+.telemetry-bar-bg {
+  width: 45px;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid rgba(0, 240, 255, 0.2);
+}
+
+.telemetry-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgba(0, 240, 255, 0.6), rgba(0, 255, 225, 0.9));
+  border-radius: 3px;
+  transition: width 0.4s ease;
+  box-shadow: 0 0 6px rgba(0, 240, 255, 0.5);
+}
+
+.telemetry-value {
+  color: #00f0ff;
+  font-weight: 600;
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.35);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.telemetry-value.small-text {
+  font-size: 10px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Temperature Threshold Indicators */
+.temp-normal {
+  color: #00f0ff !important;
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.5) !important;
+}
+
+.temp-warm {
+  color: #f59e0b !important;
+  text-shadow: 0 0 8px rgba(245, 158, 11, 0.5) !important;
+}
+
+.temp-high {
+  color: #ef4444 !important;
+  text-shadow: 0 0 8px rgba(239, 68, 68, 0.6) !important;
+  animation: pulse-high-temp 1.2s infinite ease-in-out;
+}
+
+@keyframes pulse-high-temp {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}

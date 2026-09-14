@@ -1,0 +1,82 @@
+[
+  {
+    "id": "cfd99807-46c4-49e8-9839-9da17b195513",
+    "category": "PROJECT_CONTEXT",
+    "importance": "HIGH",
+    "created_at": "2026-07-27T18:36:24.155544",
+    "updated_at": "2026-07-27T18:36:24.155544",
+    "expires_at": null,
+    "content": "AIGIS uses Java Spring Boot 3 on port 8080 for REST controllers and H2 database conversation memory.",
+    "embedding": null
+  },
+  {
+    "id": "c6793f87-ff5a-4a4c-9c27-334f7c3d7ad0",
+    "category": "PROJECT_CONTEXT",
+    "importance": "HIGH",
+    "created_at": "2026-07-27T18:36:24.156416",
+    "updated_at": "2026-07-27T18:36:24.156416",
+    "expires_at": null,
+    "content": "AIGIS Python AI Engine runs on port 8000 powering intent classification, RAG, Tavily web search, and memory orchestration.",
+    "embedding": null
+  },
+  {
+    "id": "93309c45-cfb2-412c-99d1-e168a8932e17",
+    "category": "PROJECT_CONTEXT",
+    "importance": "HIGH",
+    "created_at": "2026-07-27T18:36:24.156766",
+    "updated_at": "2026-07-27T18:36:24.156766",
+    "expires_at": null,
+    "content": "LIVE_WEB uses official Tavily Search API as primary search provider with Google News RSS fallback.",
+    "embedding": null
+  },
+  {
+    "id": "fa9bc64f-5a67-41e4-84c9-91de9634049c",
+    "category": "PROJECT_CONTEXT",
+    "importance": "HIGH",
+    "created_at": "2026-07-27T18:36:24.157192",
+    "updated_at": "2026-07-27T18:36:24.157192",
+    "expires_at": null,
+    "content": "Search providers are modularly organized inside ai_engine/providers/ (tavily_provider.py and rss_provider.py).",
+    "embedding": null
+  },
+  {
+    "id": "20edae81-36fe-4898-a5f8-86dd1432f254",
+    "category": "PROJECT_CONTEXT",
+    "importance": "HIGH",
+    "created_at": "2026-07-27T18:36:24.157604",
+    "updated_at": "2026-07-27T18:36:24.157604",
+    "expires_at": null,
+    "content": "AIGIS assistant persona is inspired by FRIDAY from Iron Man (witty, loyal, sharp, addressing user as sir).",
+    "embedding": null
+  },
+  {
+    "id": "aa621fe2-407f-4be3-84d6-30f2647718dc",
+    "category": "USER_PREFERENCE",
+    "importance": "HIGH",
+    "created_at": "2026-07-27T18:36:24.158855",
+    "updated_at": "2026-07-27T18:36:46.058462",
+    "expires_at": null,
+    "content": "User prefers concise answers with markdown sources.",
+    "embedding": null
+  },
+  {
+    "id": "577a7de3-b964-4c04-8cdf-0e99609a16ee",
+    "category": "TEMPORARY_NEWS",
+    "importance": "MEDIUM",
+    "created_at": "2026-07-27T18:36:24.159282",
+    "updated_at": "2026-07-27T18:36:46.059050",
+    "expires_at": "2026-08-10",
+    "content": "SpaceX Starship completed historic orbit flight 2026.",
+    "embedding": null
+  },
+  {
+    "id": "b3179fe1-61b6-47d1-87ad-6b787428955a",
+    "category": "TEMPORARY_NEWS",
+    "importance": "LOW",
+    "created_at": "2026-07-27T18:36:24.159772",
+    "updated_at": "2026-07-27T18:36:46.059384",
+    "expires_at": "2020-01-01",
+    "content": "Old expired event from 2020.",
+    "embedding": null
+  }
+]

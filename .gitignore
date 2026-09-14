@@ -1,0 +1,26 @@
+# Dependencies & Build Artifacts
+frontend/node_modules/
+frontend/dist/
+backend/target/
+
+# Python Cache & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Large Model Binary Weights (>50MB GitHub Push Limit)
+ai_engine/models/**/model.safetensors
+ai_engine/models/**/model.bin
+ai_engine/models/**/.cache/
+ai_engine/models/**/cache/
+
+# System & IDE files
+.vscode/
+*.log
+.DS_Store
+desktop.ini
+Thumbs.db

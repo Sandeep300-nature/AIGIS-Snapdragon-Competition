@@ -1,0 +1,189 @@
+.reminder-overlay-container {
+  position: fixed;
+  top: 90px;
+  right: 24px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 380px;
+  width: 100%;
+  pointer-events: auto;
+}
+
+.reminder-card {
+  background: rgba(10, 16, 26, 0.94);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(0, 255, 225, 0.4);
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 
+    0 12px 30px rgba(0, 0, 0, 0.8),
+    0 0 20px rgba(0, 255, 225, 0.25);
+  animation: slideInRight 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  color: #e2e8f0;
+  font-family: 'Rajdhani', -apple-system, sans-serif;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.reminder-card.overdue {
+  border-color: rgba(244, 63, 94, 0.6);
+  box-shadow: 
+    0 12px 30px rgba(0, 0, 0, 0.85),
+    0 0 20px rgba(244, 63, 94, 0.3);
+}
+
+.reminder-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  gap: 8px;
+}
+
+.reminder-badge {
+  font-family: 'Orbitron', monospace;
+  font-size: 10px;
+  font-weight: 800;
+  color: #00ffe1;
+  letter-spacing: 1.2px;
+  text-shadow: 0 0 8px rgba(0, 255, 225, 0.8);
+}
+
+.reminder-badge.overdue {
+  color: #fb7185;
+  text-shadow: 0 0 8px rgba(244, 63, 94, 0.8);
+}
+
+.startup-badge {
+  color: #fbbf24;
+  text-shadow: 0 0 8px rgba(251, 191, 36, 0.8);
+}
+
+.reminder-type-tag {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  color: #c084fc;
+  background: rgba(139, 92, 246, 0.2);
+  padding: 2px 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(139, 92, 246, 0.4);
+}
+
+.reminder-close-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  transition: color 0.2s;
+}
+
+.reminder-close-btn:hover {
+  color: #00ffe1;
+}
+
+.reminder-title {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #f8fafc;
+  letter-spacing: 0.5px;
+}
+
+.reminder-desc {
+  margin: 0 0 6px 0;
+  font-size: 13px;
+  color: #cbd5e1;
+  line-height: 1.4;
+}
+
+.reminder-time-stamp {
+  margin: 0;
+  font-size: 11px;
+  font-family: 'Share Tech Mono', monospace;
+  color: #94a3b8;
+}
+
+.startup-summary-text {
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: #e2e8f0;
+  margin: 0;
+}
+
+.reminder-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.reminder-btn {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.btn-complete {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: rgba(16, 185, 129, 0.5);
+  color: #34d399;
+}
+
+.btn-complete:hover {
+  background: rgba(16, 185, 129, 0.4);
+  box-shadow: 0 0 10px rgba(52, 211, 153, 0.4);
+}
+
+.btn-snooze {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: rgba(245, 158, 11, 0.5);
+  color: #fbbf24;
+}
+
+.btn-snooze:hover {
+  background: rgba(245, 158, 11, 0.4);
+  box-shadow: 0 0 10px rgba(251, 191, 36, 0.4);
+}
+
+.btn-dismiss {
+  background: rgba(148, 163, 184, 0.15);
+  border-color: rgba(148, 163, 184, 0.3);
+  color: #94a3b8;
+}
+
+.btn-dismiss:hover {
+  background: rgba(148, 163, 184, 0.3);
+  color: #f1f5f9;
+}
+
+.btn-primary {
+  background: rgba(0, 240, 255, 0.2);
+  border-color: rgba(0, 240, 255, 0.5);
+  color: #00ffe1;
+  width: 100%;
+}
+
+.btn-primary:hover {
+  background: rgba(0, 240, 255, 0.35);
+  box-shadow: 0 0 12px rgba(0, 255, 225, 0.4);
+}

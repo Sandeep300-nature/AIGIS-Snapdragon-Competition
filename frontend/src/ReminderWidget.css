@@ -1,0 +1,137 @@
+.reminder-widget-card {
+  background: rgba(10, 16, 26, 0.85);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(0, 255, 225, 0.35);
+  border-radius: 12px;
+  padding: 12px 16px;
+  width: 280px;
+  box-shadow: 
+    0 8px 24px rgba(0, 0, 0, 0.7),
+    0 0 16px rgba(0, 255, 225, 0.15);
+  cursor: grab;
+  user-select: none;
+  transition: border-color 0.25s, box-shadow 0.25s;
+  font-family: 'Rajdhani', -apple-system, sans-serif;
+  color: #e2e8f0;
+}
+
+.reminder-widget-card.dragging {
+  cursor: grabbing !important;
+  opacity: 0.95;
+}
+
+.reminder-widget-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(0, 255, 225, 0.7);
+  box-shadow: 
+    0 12px 30px rgba(0, 0, 0, 0.8),
+    0 0 24px rgba(0, 255, 225, 0.35);
+}
+
+.reminder-widget-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.reminder-widget-title {
+  font-family: 'Orbitron', monospace;
+  font-size: 11px;
+  font-weight: 800;
+  color: #00ffe1;
+  letter-spacing: 1.2px;
+  text-shadow: 0 0 8px rgba(0, 255, 225, 0.7);
+}
+
+.reminder-count-badge {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.15);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.next-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  color: #94a3b8;
+  letter-spacing: 1px;
+}
+
+.next-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin: 2px 0 4px 0;
+}
+
+.next-reminder-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #f8fafc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.next-priority-pill {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.next-priority-pill.priority-critical,
+.next-priority-pill.priority-high {
+  background: rgba(244, 63, 94, 0.2);
+  color: #fb7185;
+  border: 1px solid rgba(244, 63, 94, 0.5);
+}
+
+.next-priority-pill.priority-important,
+.next-priority-pill.priority-normal {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.5);
+}
+
+.next-time-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+}
+
+.next-time-str {
+  color: #cbd5e1;
+}
+
+.next-diff-str {
+  color: #34d399;
+  font-weight: 700;
+}
+
+.reminder-empty-text {
+  margin: 4px 0;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.add-reminder-prompt {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  color: #00ffe1;
+  display: block;
+  margin-top: 4px;
+}

@@ -1,0 +1,26 @@
+[
+  {
+    "id": "b98aa24c-92e1-4a0a-a469-bef939b24052",
+    "timestamp": "2026-07-27T18:36:24.160535",
+    "topic": "GROUNDING_STABILITY",
+    "lesson": "Strict prompt grounding directives successfully enforce verified Tavily facts for sports queries."
+  },
+  {
+    "id": "a729577d-c2f3-4674-ba21-4ecb7446e3ae",
+    "timestamp": "2026-07-27T18:36:24.161089",
+    "topic": "ARCHITECTURE_PORT",
+    "lesson": "Python AI Engine binds on port 8000; Java Spring Boot routes backend requests to port 8000."
+  },
+  {
+    "id": "565c9879-e90a-4e33-aed9-5bc559b4554e",
+    "timestamp": "2026-07-27T18:36:24.161467",
+    "topic": "TEST_INSIGHT",
+    "lesson": "Memory subsystem initialized and passed test suite."
+  },
+  {
+    "id": "044ade6c-5f57-4f6f-a01b-de3167f70cbb",
+    "timestamp": "2026-07-27T18:36:46.060049",
+    "topic": "TEST_INSIGHT",
+    "lesson": "Memory subsystem initialized and passed test suite."
+  }
+]

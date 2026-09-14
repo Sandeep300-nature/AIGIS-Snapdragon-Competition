@@ -1,0 +1,100 @@
+:root {
+  --text: #cbd5e1;
+  --text-h: #00f0ff;
+  --bg: #050b14;
+  --border: rgba(0, 240, 255, 0.2);
+  --code-bg: rgba(0, 240, 255, 0.1);
+  --accent: #00f0ff;
+  --accent-bg: rgba(0, 240, 255, 0.15);
+  --accent-border: rgba(0, 240, 255, 0.4);
+  --social-bg: rgba(0, 240, 255, 0.05);
+  --shadow: 0 8px 32px 0 rgba(0, 240, 255, 0.2);
+
+  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, Consolas, monospace;
+
+  font: 18px/145% var(--sans);
+  letter-spacing: 0.18px;
+  color-scheme: dark;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  @media (max-width: 1024px) {
+    font-size: 16px;
+  }
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden !important; /* Strict 100vh Desktop AI Assistant Lock */
+  background-image: url('./images/backgroung_image.jpeg');
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+  max-height: 100vh;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  overflow: hidden !important;
+}
+
+h1,
+h2 {
+  font-family: var(--heading);
+  font-weight: 600;
+  color: var(--text-h);
+  text-shadow: 0 0 15px rgba(0, 240, 255, 0.4);
+}
+
+h1 {
+  font-size: 48px;
+  letter-spacing: -1.68px;
+  margin: 12px 0 6px;
+  @media (max-width: 1024px) {
+    font-size: 34px;
+    margin: 8px 0;
+  }
+}
+h2 {
+  font-size: 22px;
+  line-height: 118%;
+  letter-spacing: -0.24px;
+  margin: 0 0 6px;
+  @media (max-width: 1024px) {
+    font-size: 18px;
+  }
+}
+p {
+  margin: 0;
+}
+
+code,
+.counter {
+  font-family: var(--mono);
+  display: inline-flex;
+  border-radius: 6px;
+  color: var(--text-h);
+}
+
+code {
+  font-size: 14px;
+  line-height: 135%;
+  padding: 4px 8px;
+  background: var(--code-bg);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+}

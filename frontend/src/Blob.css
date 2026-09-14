@@ -1,0 +1,176 @@
+.blob-wrapper {
+  position: fixed;
+  bottom: 25px;
+  right: 25px;
+  width: 340px;
+  height: 340px;
+  overflow: visible;
+  pointer-events: auto;
+  z-index: 100;
+}
+
+.blob-canvas-container {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+
+.blob-canvas-container canvas {
+  display: block;
+  border-radius: 50%;
+}
+
+/* Unified Cyan Light Glassmorphism State Badge */
+.orb-state-badge {
+  position: absolute;
+  top: -45px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 18px;
+  min-width: 145px;
+  background: rgba(10, 25, 45, 0.85);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(0, 240, 255, 0.4);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 15px rgba(0, 240, 255, 0.2);
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  z-index: 120;
+  transition: all 0.3s ease;
+}
+
+.orb-state-badge .state-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #f1f5f9;
+}
+
+.orb-state-badge .state-symbol {
+  font-size: 14px;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+/* Unified Cyan Matching Theme */
+.orb-state-badge.idle {
+  border-color: rgba(0, 240, 255, 0.4);
+}
+.orb-state-badge.idle .state-symbol {
+  color: #00ffe1;
+  text-shadow: 0 0 8px rgba(0, 255, 225, 0.6);
+}
+
+.orb-state-badge.listening {
+  border-color: rgba(0, 255, 225, 0.7);
+  box-shadow: 0 0 22px rgba(0, 255, 225, 0.4);
+}
+.orb-state-badge.listening .state-symbol {
+  color: #00ffe1;
+  text-shadow: 0 0 12px rgba(0, 255, 225, 0.8);
+  animation: pulse-symbol 1.2s infinite ease-in-out;
+}
+
+.orb-state-badge.speaking {
+  border-color: rgba(0, 240, 255, 0.7);
+  box-shadow: 0 0 22px rgba(0, 240, 255, 0.4);
+}
+.orb-state-badge.speaking .state-symbol {
+  color: #00ffe1;
+  text-shadow: 0 0 12px rgba(0, 240, 255, 0.8);
+  animation: flare-symbol 0.8s infinite ease-in-out;
+}
+
+.orb-state-badge.thinking {
+  border-color: rgba(168, 85, 247, 0.6);
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.3);
+}
+.orb-state-badge.thinking .state-symbol {
+  color: #c084fc;
+  display: inline-block;
+  animation: spin-symbol 2s linear infinite;
+}
+
+.orb-state-badge.error {
+  border-color: rgba(255, 51, 102, 0.6);
+  box-shadow: 0 0 20px rgba(255, 51, 102, 0.4);
+}
+.orb-state-badge.error .state-symbol {
+  color: #ff3366;
+}
+
+@keyframes pulse-symbol {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.7; }
+}
+
+@keyframes spin-symbol {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes flare-symbol {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 0.8; }
+}
+
+.blob-ui-overlay {
+  position: absolute;
+  top: -85px;
+  right: 50%;
+  transform: translateX(50%);
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+.audio-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(0, 20, 40, 0.85);
+  border-radius: 16px;
+  border: 1px solid rgba(0, 255, 225, 0.3);
+  color: #00ffe1;
+  font-size: 12px;
+  backdrop-filter: blur(8px);
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  background-color: #00ffe1;
+  border-radius: 50%;
+  animation: pulse-ring 1.5s infinite ease-in-out;
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(0, 255, 225, 0.7);
+  }
+  70% {
+    transform: scale(1.1);
+    box-shadow: 0 0 0 8px rgba(0, 255, 225, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(0, 255, 225, 0);
+  }
+}
+
+.mic-error-badge {
+  padding: 6px 12px;
+  background: rgba(255, 50, 50, 0.2);
+  border: 1px solid rgba(255, 80, 80, 0.5);
+  color: #ff6b6b;
+  border-radius: 10px;
+  font-size: 12px;
+}

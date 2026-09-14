@@ -1,0 +1,135 @@
+.weather-hud-card {
+  position: fixed;
+  width: 240px;
+  padding: 16px 20px;
+  background: rgba(10, 25, 45, 0.85);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  border-radius: 18px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 240, 255, 0.12);
+  color: #e2e8f0;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 150;
+  user-select: none;
+  touch-action: none;
+  transition: left 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), 
+              top 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), 
+              transform 0.5s ease, 
+              box-shadow 0.5s ease, 
+              border-color 0.3s ease;
+  pointer-events: auto;
+}
+
+.weather-hud-card:hover {
+  border-color: rgba(0, 255, 225, 0.6);
+  box-shadow: 0 12px 40px rgba(0, 240, 255, 0.25);
+}
+
+.weather-hud-card.is-dragging {
+  transition: none !important;
+  border-color: #00ffe1;
+  box-shadow: 0 14px 45px rgba(0, 255, 225, 0.4);
+  opacity: 0.95;
+}
+
+.weather-hud-card.is-focused {
+  transform: translate(-50%, -50%) scale(1.15);
+  z-index: 2000;
+  border-color: #00ffe1;
+  box-shadow: 0 0 55px rgba(0, 240, 255, 0.75), 0 20px 60px rgba(0, 0, 0, 0.8);
+}
+
+.weather-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed rgba(0, 240, 255, 0.25);
+}
+
+.weather-header-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: #00ffe1;
+  letter-spacing: 1.5px;
+}
+
+.loc-toggle-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: transform 0.2s ease;
+}
+
+.loc-toggle-btn:hover {
+  transform: rotate(90deg);
+}
+
+.weather-time-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 0;
+}
+
+.live-time {
+  font-size: 20px;
+  font-weight: 700;
+  color: #00ffe1;
+  text-shadow: 0 0 10px rgba(0, 255, 225, 0.5);
+  letter-spacing: 1px;
+}
+
+.live-date {
+  font-size: 11px;
+  color: #94a3b8;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+
+.weather-info-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+.weather-main-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.weather-city {
+  font-size: 11px;
+  font-weight: 600;
+  color: #f1f5f9;
+  letter-spacing: 0.8px;
+}
+
+.weather-temp {
+  font-size: 15px;
+  font-weight: 700;
+  color: #00f0ff;
+  text-shadow: 0 0 6px rgba(0, 240, 255, 0.4);
+}
+
+.weather-cond-row {
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+.weather-stats-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: #94a3b8;
+  margin-top: 2px;
+}

@@ -1,0 +1,41 @@
+{
+  "c:\\Users\\S.SANDEEP\\Desktop\\AIGIS\\frontend\\README.md": {
+    "path": "c:\\Users\\S.SANDEEP\\Desktop\\AIGIS\\frontend\\README.md",
+    "title": "README.md",
+    "modified_date": 1784987576.3182757,
+    "chunk_ids": [
+      "4142156715481786701_0",
+      "4142156715481786701_1",
+      "4142156715481786701_2"
+    ],
+    "indexed_at": "2026-07-30T19:59:27.746165"
+  },
+  "c:\\Users\\S.SANDEEP\\Desktop\\AIGIS\\backend\\src\\main\\java\\com\\aigis\\backend\\controller\\ChatController.java": {
+    "path": "c:\\Users\\S.SANDEEP\\Desktop\\AIGIS\\backend\\src\\main\\java\\com\\aigis\\backend\\controller\\ChatController.java",
+    "title": "ChatController.java",
+    "collection": "Programming",
+    "codeMeta": {
+      "language": "Java",
+      "extension": ".java",
+      "classNames": [
+        "ChatController"
+      ],
+      "functionNames": [
+        "chat",
+        "ChatController",
+        "getHistory"
+      ]
+    },
+    "modified_date": 1785250481.5547137,
+    "chunk_ids": [
+      "6961951563335065554_0",
+      "6961951563335065554_1",
+      "6961951563335065554_2",
+      "6961951563335065554_3",
+      "6961951563335065554_4",
+      "6961951563335065554_5",
+      "6961951563335065554_6"
+    ],
+    "indexed_at": "2026-07-30T20:06:32.250527"
+  }
+}
