@@ -263,10 +263,31 @@
 }
 
 .provider-tag.provenance-tag.provenance-action {
-  color: #f59e0b;
-  background: rgba(245, 158, 11, 0.16);
-  border: 1px solid rgba(245, 158, 11, 0.5);
-  text-shadow: 0 0 8px rgba(245, 158, 11, 0.3);
+  color: #00ffe1;
+  background: rgba(0, 255, 225, 0.16);
+  border: 1px solid rgba(0, 255, 225, 0.5);
+  text-shadow: 0 0 8px rgba(0, 255, 225, 0.4);
+}
+
+.provider-tag.provenance-tag.provenance-action-web {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.16);
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  text-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+}
+
+.provider-tag.provenance-tag.provenance-action-blocked {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.18);
+  border: 1px solid rgba(251, 191, 36, 0.6);
+  text-shadow: 0 0 8px rgba(251, 191, 36, 0.4);
+}
+
+.provider-tag.provenance-tag.provenance-action-failed {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.18);
+  border: 1px solid rgba(239, 68, 68, 0.6);
+  text-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
 }
 
 .provider-tag.provenance-tag.provenance-system {
@@ -1031,6 +1052,335 @@
   box-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
   color: #ffffff;
 }
+
+/* ==========================================================================
+   M11 Competition UI Polish: Status Ribbon, Quick Chips & Action Banners
+   ========================================================================== */
+
+/* Action Execution Banner in AI Response Bubble */
+.action-execution-banner {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  animation: fadeIn 0.3s ease;
+}
+
+.action-execution-banner.action-success {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  border-left: 3px solid #10b981;
+  color: #34d399;
+}
+
+.action-execution-banner.action-blocked {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-left: 3px solid #f59e0b;
+  color: #fbbf24;
+}
+
+.action-execution-banner.action-failed {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-left: 3px solid #ef4444;
+  color: #f87171;
+}
+
+.action-banner-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.action-status-icon {
+  font-size: 13px;
+}
+
+.action-banner-title {
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.action-type-pill {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 10px;
+  color: inherit;
+}
+
+.action-network-tag {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-weight: 600;
+}
+
+.action-network-tag.net-local {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.action-network-tag.net-egress {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.grounding-badge.action-badge {
+  font-weight: 700;
+  letter-spacing: 0.6px;
+}
+
+.grounding-badge.action-badge.action-verified {
+  color: #00ffe1;
+  background: rgba(0, 255, 225, 0.14);
+  border: 1px solid rgba(0, 255, 225, 0.4);
+}
+
+.grounding-badge.action-badge.blocked {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.15);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+}
+
+/* AI Error Notice Card */
+.ai-response-error-card {
+  padding: 12px 14px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-left: 3px solid #ef4444;
+  border-radius: 8px;
+  font-family: 'Share Tech Mono', monospace;
+}
+
+.error-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.error-card-icon {
+  font-size: 14px;
+}
+
+.error-card-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #f87171;
+  letter-spacing: 1px;
+}
+
+.error-card-msg {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 14px;
+  color: #fecdd3;
+  margin: 0 0 8px 0;
+  line-height: 1.4;
+}
+
+.error-card-footer {
+  font-size: 11px;
+  color: #94a3b8;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 6px;
+}
+
+.error-card-hint {
+  display: block;
+}
+
+/* Competition System Architecture & Status Ribbon */
+.aigis-competition-status-strip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.status-pill-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  color: #94a3b8;
+  padding: 3px 9px;
+  border-radius: 12px;
+  background: rgba(8, 14, 24, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: default;
+  letter-spacing: 0.3px;
+}
+
+.status-pill-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+  border-color: rgba(0, 240, 255, 0.3);
+}
+
+.status-dot-mini {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #00ffe1;
+  box-shadow: 0 0 6px #00ffe1;
+  flex-shrink: 0;
+}
+
+.status-pill-item.pill-engine.local .status-dot-mini {
+  background: #00ffe1;
+  box-shadow: 0 0 6px #00ffe1;
+}
+
+.status-pill-item.pill-engine.cloud .status-dot-mini {
+  background: #c084fc;
+  box-shadow: 0 0 6px #c084fc;
+}
+
+.status-pill-label {
+  color: #64748b;
+  font-size: 9.5px;
+  font-weight: 700;
+}
+
+.status-pill-val {
+  color: #e2e8f0;
+}
+
+.status-pill-item.pill-engine {
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+.status-pill-item.pill-engine .status-pill-val {
+  color: #38bdf8;
+  font-weight: 700;
+}
+
+.status-pill-item.pill-privacy {
+  border-color: rgba(52, 211, 153, 0.3);
+}
+
+.status-pill-item.pill-privacy .status-pill-val {
+  color: #34d399;
+}
+
+.status-pill-item.pill-runtime {
+  border-color: rgba(167, 139, 250, 0.3);
+}
+
+.status-pill-item.pill-runtime .status-pill-val {
+  color: #c4b5fd;
+}
+
+.status-pill-item.pill-docs {
+  border-color: rgba(0, 255, 225, 0.3);
+}
+
+.status-pill-item.pill-docs .status-pill-val {
+  color: #00ffe1;
+}
+
+.status-pill-item.pill-action {
+  border-color: rgba(251, 191, 36, 0.3);
+}
+
+.status-pill-item.pill-action .status-pill-val {
+  color: #fde047;
+}
+
+.status-pill-item.clickable-pill {
+  cursor: pointer;
+}
+
+.status-pill-item.clickable-pill:hover {
+  background: rgba(0, 240, 255, 0.12);
+  border-color: #00ffe1;
+  color: #ffffff;
+}
+
+/* Quick Capability Suggestions */
+.terminal-quick-chips {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  pointer-events: auto;
+  user-select: none;
+  animation: fadeIn 0.3s ease;
+}
+
+.chips-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #475569;
+  letter-spacing: 0.8px;
+  margin-right: 2px;
+}
+
+.quick-chip-btn {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10.5px;
+  color: #94a3b8;
+  background: rgba(14, 20, 32, 0.7);
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  border-radius: 12px;
+  padding: 3px 9px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  letter-spacing: 0.2px;
+}
+
+.quick-chip-btn:hover {
+  color: #00ffe1;
+  border-color: #00ffe1;
+  background: rgba(0, 240, 255, 0.12);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .aigis-competition-status-strip {
+    gap: 4px;
+  }
+  .status-pill-item {
+    font-size: 9px;
+    padding: 2px 6px;
+  }
+  .terminal-quick-chips {
+    gap: 4px;
+  }
+  .quick-chip-btn {
+    font-size: 9.5px;
+    padding: 2px 7px;
+  }
+}
+
 
 
 

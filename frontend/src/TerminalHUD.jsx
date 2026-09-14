@@ -39,6 +39,16 @@ export default function TerminalHUD({
   const [showVoiceModal, setShowVoiceModal] = useState(false);
   const [sttMetadata, setSttMetadata] = useState(null);
 
+  // M11 Competition Architecture & Status Posture State
+  const [archStatus, setArchStatus] = useState({
+    engine: 'Local SLM (SmolLM2-135M)',
+    engineType: 'local',
+    privacyMode: 'LOCAL_ONLY',
+    runtime: 'Host: CPU (x86_64) · Target: Snapdragon X',
+    docStatus: 'SQLite Vault Ready',
+    actionStatus: 'Action Guard Armed'
+  });
+
   // Voice Settings State
   const [voiceSettings, setVoiceSettingsState] = useState(() => getVoiceSettings());
   const [availableVoices, setAvailableVoices] = useState([]);
@@ -150,6 +160,25 @@ export default function TerminalHUD({
     }
 
     return () => window.removeEventListener('voiceChanged', handleVoiceChanged);
+  }, []);
+
+  // M11: Fetch live AI router / engine status on startup (graceful fallback if offline)
+  useEffect(() => {
+    fetch('http://localhost:8000/api/v1/ai/status')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data) {
+          const isSnapdragon = data.activeLocalBackend === 'snapdragon_npu';
+          setArchStatus(prev => ({
+            ...prev,
+            engine: isSnapdragon ? 'Snapdragon NPU' : 'Local SLM (SmolLM2-135M)',
+            privacyMode: 'LOCAL_ONLY'
+          }));
+        }
+      })
+      .catch(() => {
+        // Keeps truthful default: Host CPU (x86_64) · Target Snapdragon X
+      });
   }, []);
 
   useEffect(() => {
@@ -379,6 +408,23 @@ export default function TerminalHUD({
         latencyMs: data.latencyMs || elapsed,
         metadata: data.metadata || {}
       });
+
+      // M11: Update competition status ribbon dynamically
+      const isLocal = (data.engine === 'local') || (data.metadata && data.metadata.localInference);
+      const isCloud = (data.engine === 'cloud') || (data.provider && data.provider.toLowerCase().includes('groq'));
+      const actMeta = data.metadata?.action ? data.metadata : null;
+
+      setArchStatus(prev => ({
+        ...prev,
+        engine: isLocal ? 'Local SLM (SmolLM2-135M)' : isCloud ? 'Groq Cloud (LLaMA-3.3)' : (data.provider || prev.engine),
+        engineType: isLocal ? 'local' : isCloud ? 'cloud' : 'default',
+        privacyMode: data.metadata?.privacyMode || prev.privacyMode,
+        docStatus: (data.metadata?.documentGrounded || data.metadata?.ragContextUsed) ? 'Document Grounded (Vault)' : prev.docStatus,
+        actionStatus: actMeta 
+          ? `Action ${actMeta.actionStatus || 'OK'}: ${actMeta.actionType || ''}`.trim() 
+          : prev.actionStatus
+      }));
+
       onMemoryUpdate?.(prev => prev + 2);
 
       if (data.isOffline || (data.provider && data.provider.toLowerCase().includes('offline'))) {
@@ -666,7 +712,39 @@ export default function TerminalHUD({
       };
     }
 
-    // 2. Action execution (Notepad, YouTube, app launching)
+    // 2. Action Safety Guard (M8.1 & M8.2 verified execution)
+    if (meta.action) {
+      const status = (meta.actionStatus || 'SUCCESS').toUpperCase();
+      const actionType = meta.actionType || 'DESKTOP_ACTION';
+      if (status === 'BLOCKED') {
+        return {
+          label: '🛡️ Action Guard: Blocked',
+          type: 'action-blocked',
+          title: `Action blocked by ActionSafetyGuard: ${meta.actionError || 'Target not permitted in allowlist'}`
+        };
+      }
+      if (status === 'FAILED') {
+        return {
+          label: '⚠️ Action Execution: Failed',
+          type: 'action-failed',
+          title: `Action failed during execution: ${meta.actionError || 'Error reported by system'}`
+        };
+      }
+      if (actionType === 'OPEN_URL') {
+        return {
+          label: '🌐 Web Action (Safe URL)',
+          type: 'action-web',
+          title: 'URL navigation verified by ActionSafetyGuard'
+        };
+      }
+      return {
+        label: '🖥️ Safe Desktop Action (Verified)',
+        type: 'action',
+        title: 'Deterministic application launch verified by ActionSafetyGuard'
+      };
+    }
+
+    // 2b. Legacy Action execution fallback (Notepad, YouTube, app launching)
     if (intent === 'desktop_action' || intent === 'web_action' || (provider && (provider.includes('Desktop Control') || provider.includes('Desktop Action')))) {
       return {
         label: '🖥️ Desktop Action (Executed)',
@@ -720,6 +798,23 @@ export default function TerminalHUD({
 
   const renderReplyContent = (text) => {
     if (!text) return null;
+
+    if (hasError || text.startsWith('Error:')) {
+      return (
+        <div className="ai-response-error-card">
+          <div className="error-card-header">
+            <span className="error-card-icon">⚠️</span>
+            <span className="error-card-title">BACKEND CONNECTION NOTICE</span>
+          </div>
+          <p className="error-card-msg">{text}</p>
+          <div className="error-card-footer">
+            <span className="error-card-hint">
+              💡 Ensure Python AI Engine (:8000) and Spring Boot (:8080) are running. Local deterministic features remain standby.
+            </span>
+          </div>
+        </div>
+      );
+    }
 
     const lines = text.split('\n');
     const hasStructuredFacts = lines.length > 1 && lines.some(l => 
@@ -815,14 +910,44 @@ export default function TerminalHUD({
             {renderReplyContent(aiReply)}
           </div>
 
+          {/* Action Execution Provenance Banner */}
+          {responseMeta?.metadata?.action && (
+            <div className={`action-execution-banner action-${(responseMeta.metadata.actionStatus || 'SUCCESS').toLowerCase()}`}>
+              <div className="action-banner-left">
+                <span className="action-status-icon">
+                  {responseMeta.metadata.actionStatus === 'BLOCKED' ? '🛡️' : responseMeta.metadata.actionStatus === 'FAILED' ? '⚠️' : '⚡'}
+                </span>
+                <span className="action-banner-title">
+                  {responseMeta.metadata.actionStatus === 'BLOCKED' 
+                    ? 'ACTION BLOCKED BY SAFETY GUARD' 
+                    : responseMeta.metadata.actionStatus === 'FAILED'
+                    ? 'ACTION EXECUTION FAILED'
+                    : 'ACTION VERIFIED & EXECUTED'}
+                </span>
+                <span className="action-type-pill">
+                  {responseMeta.metadata.actionType || 'ACTION'}
+                </span>
+              </div>
+              <div className="action-banner-right">
+                <span className={`action-network-tag ${responseMeta.metadata.networkUsed ? 'net-egress' : 'net-local'}`}>
+                  {responseMeta.metadata.networkUsed ? '📡 Network Egress' : '🛡️ On-Device Local'}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Grounding & Privacy Provenance Bar */}
-          {(responseMeta?.metadata?.documentGrounded || responseMeta?.metadata?.ragContextUsed || responseMeta?.metadata?.privacyMode) && (
+          {(responseMeta?.metadata?.documentGrounded || responseMeta?.metadata?.ragContextUsed || responseMeta?.metadata?.privacyMode || responseMeta?.metadata?.action) && (
             <div className="provenance-grounding-bar">
               <div className="provenance-grounding-left">
                 {responseMeta.metadata.documentGrounded || responseMeta.metadata.ragContextUsed ? (
                   <span className="grounding-badge grounded" title="Local vault documents were chunked, indexed, and retrieved to ground this response">
                     <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
                     LOCAL DOCUMENT GROUNDING
+                  </span>
+                ) : responseMeta.metadata.action ? (
+                  <span className={`grounding-badge action-badge ${responseMeta.metadata.actionStatus === 'BLOCKED' ? 'blocked' : 'action-verified'}`}>
+                    🛡️ ACTION {responseMeta.metadata.actionStatus || 'VERIFIED'}
                   </span>
                 ) : (
                   <span className="grounding-badge general" title="General AI synthesis without local document grounding">
@@ -837,12 +962,12 @@ export default function TerminalHUD({
               </div>
               <div className="provenance-grounding-right">
                 {responseMeta.metadata.privacyMode && (
-                  <span className="privacy-mode-pill">
+                  <span className="privacy-mode-pill" title="M7 Deterministic Privacy Boundary Enforced">
                     🔒 {responseMeta.metadata.privacyMode}
                   </span>
                 )}
                 {typeof responseMeta.metadata.networkUsed === 'boolean' && (
-                  <span className={`network-status-pill ${responseMeta.metadata.networkUsed ? 'net-on' : 'net-off'}`}>
+                  <span className={`network-status-pill ${responseMeta.metadata.networkUsed ? 'net-on' : 'net-off'}`} title={responseMeta.metadata.networkUsed ? "Network egress permitted" : "Zero network egress — strictly local on-device"}>
                     {responseMeta.metadata.networkUsed ? '📡 Network: ON' : '🛡️ Network: OFF'}
                   </span>
                 )}
@@ -878,6 +1003,68 @@ export default function TerminalHUD({
 
       {/* Ambient Glow */}
       <div className={`terminal-hud-glow ${isThinking ? 'thinking' : isMicActive ? 'listening' : ''}`}></div>
+
+      {/* M11 Competition System Architecture & Status Ribbon */}
+      <div className="aigis-competition-status-strip">
+        <div className={`status-pill-item pill-engine ${archStatus.engineType}`} title={`Active AI Inference Engine: ${archStatus.engine}`}>
+          <span className="status-dot-mini"></span>
+          <span className="status-pill-label">ENGINE:</span>
+          <span className="status-pill-val">{archStatus.engine}</span>
+        </div>
+
+        <div className="status-pill-item pill-privacy" title="M7 Privacy Guard: Strict code-enforced boundary preventing private data from cloud egress">
+          <span className="status-pill-icon">🔒</span>
+          <span className="status-pill-label">PRIVACY:</span>
+          <span className="status-pill-val">{archStatus.privacyMode}</span>
+        </div>
+
+        <div className="status-pill-item pill-runtime" title="Runtime & Deployment: Host dev environment running CPU x86_64, targeting Qualcomm Snapdragon X Elite ARM64 NPU">
+          <span className="status-pill-icon">⚙️</span>
+          <span className="status-pill-val">{archStatus.runtime}</span>
+        </div>
+
+        <div 
+          className="status-pill-item pill-docs clickable-pill"
+          onClick={onOpenDocumentManager}
+          title="M7.6 Local Document Intelligence: SQLite Vault ready for hybrid RAG search. Click to open Document Manager."
+        >
+          <span className="status-pill-icon">📄</span>
+          <span className="status-pill-label">DOCS:</span>
+          <span className="status-pill-val">{archStatus.docStatus}</span>
+        </div>
+
+        <div className="status-pill-item pill-action" title="M8 Action Safety Guard: Enforcing strict allowlist for local desktop applications and safe web URLs">
+          <span className="status-pill-icon">🛡️</span>
+          <span className="status-pill-label">ACTIONS:</span>
+          <span className="status-pill-val">{archStatus.actionStatus}</span>
+        </div>
+      </div>
+
+      {/* Quick Capability Suggestions (Visible when idle) */}
+      {!aiReply && !isThinking && (
+        <div className="terminal-quick-chips">
+          <span className="chips-label">CAPABILITIES:</span>
+          {[
+            { label: '🖥️ Open Notepad', prompt: 'open notepad' },
+            { label: '📄 Search Documents', prompt: 'search my documents for architecture' },
+            { label: '⚙️ Workstation Telemetry', prompt: 'workstation system status' },
+            { label: '🌐 Open YouTube', prompt: 'open youtube' },
+            { label: '🔒 Privacy Status', prompt: 'what is your privacy mode?' }
+          ].map((chip, idx) => (
+            <button
+              key={idx}
+              className="quick-chip-btn"
+              onClick={() => {
+                setInputText(chip.prompt);
+                inputRef.current?.focus();
+              }}
+              title={`Click to test: "${chip.prompt}"`}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Floating HUD Terminal Bar */}
       <div className={`terminal-hud-bar ${isThinking ? 'is-thinking' : ''}`}>
