@@ -13,6 +13,11 @@ try:
         HardwareNotSupportedError,
         BaseEngine
     )
+    from .engine.qualcomm_runner import (
+        QualcommModelRunner,
+        SnapdragonRuntimeState,
+        SnapdragonCapabilityReport
+    )
 except ImportError:
     from engine.snapdragon_engine import (
         SnapdragonNPUEngine,
@@ -20,10 +25,18 @@ except ImportError:
         HardwareNotSupportedError,
         BaseEngine
     )
+    from engine.qualcomm_runner import (
+        QualcommModelRunner,
+        SnapdragonRuntimeState,
+        SnapdragonCapabilityReport
+    )
 
 __all__ = [
     "SnapdragonNPUEngine",
     "SnapdragonConfig",
     "HardwareNotSupportedError",
-    "BaseEngine"
+    "BaseEngine",
+    "QualcommModelRunner",
+    "SnapdragonRuntimeState",
+    "SnapdragonCapabilityReport"
 ]

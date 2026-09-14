@@ -15,6 +15,11 @@ from .snapdragon_engine import (
     HardwareNotSupportedError,
     BaseEngine
 )
+from .qualcomm_runner import (
+    QualcommModelRunner,
+    SnapdragonRuntimeState,
+    SnapdragonCapabilityReport
+)
 
 # Compatibility aliases
 SmolLM2Engine = LocalEngine
@@ -31,6 +36,9 @@ __all__ = [
     "SnapdragonNPUEngine",
     "SnapdragonConfig",
     "HardwareNotSupportedError",
+    "QualcommModelRunner",
+    "SnapdragonRuntimeState",
+    "SnapdragonCapabilityReport",
     "IntentTaskRouter",
     "LocalSLMPipeline",
     "LocalSTTService"
