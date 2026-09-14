@@ -24,6 +24,7 @@ try:
         classify_intent_llm,
         is_time_sensitive_query
     )
+    from actions import ActionSafetyGuard, DefaultActionExecutor, ActionRequest, ActionType
 except ImportError:
     from ai_engine.desktop_control import DesktopActionService
     from ai_engine.web_search import (
@@ -32,6 +33,7 @@ except ImportError:
         classify_intent_llm,
         is_time_sensitive_query
     )
+    from ai_engine.actions import ActionSafetyGuard, DefaultActionExecutor, ActionRequest, ActionType
 
 
 class LocalEngine(BaseAIEngine):
@@ -53,6 +55,8 @@ class LocalEngine(BaseAIEngine):
         self.detector = hardware_detector or HardwareDetector
         self.slm_pipeline = slm_pipeline if slm_pipeline is not None else LocalSLMPipeline()
         self.desktop_action_service = desktop_action_service or DesktopActionService()
+        self.action_guard = ActionSafetyGuard()
+        self.action_executor = DefaultActionExecutor(self.action_guard, self.desktop_action_service)
         self._cached_capabilities = None
 
     def _get_capabilities(self) -> Dict[str, Any]:
@@ -84,24 +88,89 @@ class LocalEngine(BaseAIEngine):
         provider_name = f"AIGIS Local Engine -> {accelerator_label}"
 
         # =========================================================================
-        # PRIORITY 1: Executable Desktop & Web Actions (Deterministic Execution)
+        # PRIORITY 1: Executable Desktop & Web Actions (Deterministic Safety Boundary)
+        # Enforces M8.1 ActionSafetyGuard before any execution occurs.
         # =========================================================================
 
-        # 1a. Native Desktop Application & System Hardware Actions (Notepad, Calc, Volume, etc.)
+        # 1a. Prohibited command & destructive execution interceptor
+        raw_val = self.action_guard.validate_raw_prompt(prompt)
+        if raw_val and not raw_val.allowed:
+            elapsed_ms = int((time.perf_counter() - start_time) * 1000)
+            return self._build_local_response(
+                reply=f"Action blocked by safety boundary: {raw_val.reason}, sir.",
+                provider="AIGIS Action Guard -> Safety Boundary",
+                latency_ms=elapsed_ms,
+                metadata={
+                    "intent": "desktop_action",
+                    "action": True,
+                    "actionType": "PROHIBITED_COMMAND",
+                    "actionStatus": "BLOCKED",
+                    "reason": raw_val.reason,
+                    "networkUsed": False
+                }
+            )
+
+        # 1b. Structured action request validation & unified execution check (M8.2)
+        action_req = self.action_guard.parse_from_prompt(prompt, session_id)
+        if action_req:
+            action_result = self.action_executor.execute(action_req)
+            elapsed_ms = int((time.perf_counter() - start_time) * 1000)
+            if not action_result.success:
+                status = action_result.metadata.get("actionStatus", "FAILED")
+                reason = action_result.error or action_result.message
+                return self._build_local_response(
+                    reply=action_result.message,
+                    provider=action_result.metadata.get("provider", "AIGIS Action Guard -> Safety Boundary"),
+                    latency_ms=elapsed_ms,
+                    metadata={
+                        "intent": action_result.metadata.get("intent", "desktop_action"),
+                        "action": True,
+                        "actionType": action_result.action_type,
+                        "actionStatus": status,
+                        "reason": reason,
+                        "networkUsed": action_result.metadata.get("networkUsed", False)
+                    }
+                )
+            else:
+                return self._build_local_response(
+                    reply=action_result.message,
+                    provider=action_result.metadata.get("provider", "Desktop Control -> Action Execution"),
+                    latency_ms=elapsed_ms,
+                    metadata={
+                        "intent": action_result.metadata.get("intent", "desktop_action"),
+                        "handled": True,
+                        "action": True,
+                        "actionType": action_result.action_type,
+                        "actionStatus": "SUCCESS",
+                        "networkUsed": action_result.metadata.get("networkUsed", False),
+                        **({"url": action_result.url_to_open} if action_result.url_to_open else {})
+                    },
+                    url_to_open=action_result.url_to_open
+                )
+
+        # 1c. Native Desktop Application & System Hardware Actions (Notepad, Calc, Volume, etc.)
         if self.desktop_action_service:
             handled_desktop, desktop_reply, desktop_provider = self.desktop_action_service.process_natural_command(
                 session_id, prompt
             )
             if handled_desktop:
                 elapsed_ms = int((time.perf_counter() - start_time) * 1000)
+                action_type_label = "OPEN_APPLICATION" if "Opening " in desktop_reply else "SYSTEM_CONTROL"
                 return self._build_local_response(
                     reply=desktop_reply,
                     provider=desktop_provider or "Desktop Control -> Action Execution",
                     latency_ms=elapsed_ms,
-                    metadata={"intent": "desktop_action", "handled": True}
+                    metadata={
+                        "intent": "desktop_action",
+                        "handled": True,
+                        "action": True,
+                        "actionType": action_type_label,
+                        "actionStatus": "SUCCESS",
+                        "networkUsed": False
+                    }
                 )
 
-        # 1b. Web / Browser Navigation Actions (YouTube, GitHub, Google, explicit URLs)
+        # 1d. Web / Browser Navigation Actions (YouTube, GitHub, Google, explicit URLs)
         target_url = None
         explicit_url = extract_url_from_text(prompt)
         if explicit_url:
@@ -125,7 +194,14 @@ class LocalEngine(BaseAIEngine):
                 reply=reply_text,
                 provider="AIGIS Desktop Action -> Web Navigation",
                 latency_ms=elapsed_ms,
-                metadata={"intent": "web_action", "url": target_url},
+                metadata={
+                    "intent": "web_action",
+                    "url": target_url,
+                    "action": True,
+                    "actionType": "OPEN_URL",
+                    "actionStatus": "SUCCESS",
+                    "networkUsed": True
+                },
                 url_to_open=target_url
             )
 

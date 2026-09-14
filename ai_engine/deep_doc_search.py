@@ -352,16 +352,65 @@ class DeepDocSearchEngine:
         mode: str = "hybrid"
     ) -> Dict[str, Any]:
         """
-        Returns full search response envelope with retrieval mode and embedding metadata.
+        Returns full search response envelope with retrieval mode, status, and embedding metadata.
         """
-        results = self.search(query=query, top_k=top_k, collection=collection, mode=mode)
-        return {
-            "query": query,
-            "mode": mode,
-            "results": results,
-            "count": len(results),
-            "embeddingStatus": self.embedder.status()
-        }
+        norm_mode = (mode or "hybrid").lower().strip()
+        limit = min(max(top_k, 1), 20)
+        embedder_status = self.embedder.status()
+
+        if norm_mode == "lexical":
+            results = self.vault.search_document_chunks(query=query, limit=limit, collection=collection)
+            for r in results:
+                r["retrieval_mode"] = "LEXICAL"
+            return {
+                "status": "SUCCESS",
+                "message": f"Retrieved {len(results)} chunks via lexical search.",
+                "query": query,
+                "mode": "lexical",
+                "retrievalMode": "LEXICAL",
+                "fallbackUsed": False,
+                "results": results,
+                "count": len(results),
+                "embeddingStatus": embedder_status
+            }
+        elif norm_mode == "semantic":
+            sem_res = self.vector_search.search_semantic(query=query, top_k=limit, collection=collection)
+            results = sem_res.get("results", [])
+            status = sem_res.get("status", "SUCCESS")
+            message = sem_res.get("message", "")
+            return {
+                "status": status,
+                "message": message or f"Retrieved {len(results)} chunks via semantic vector search.",
+                "query": query,
+                "mode": "semantic",
+                "retrievalMode": "SEMANTIC",
+                "fallbackUsed": False,
+                "results": results,
+                "count": len(results),
+                "embeddingStatus": embedder_status
+            }
+        else:
+            hyb_res = self.vector_search.search_hybrid(
+                query=query,
+                top_k=limit,
+                collection=collection
+            )
+            results = hyb_res.get("results", [])
+            ret_mode = hyb_res.get("retrieval_mode", "HYBRID")
+            status = hyb_res.get("status", "SUCCESS")
+            message = hyb_res.get("message", "")
+            fallback = (ret_mode == "LEXICAL_FALLBACK") or not self.embedder.is_available()
+            return {
+                "status": status,
+                "message": message or f"Retrieved {len(results)} chunks via hybrid retrieval.",
+                "query": query,
+                "mode": "hybrid",
+                "retrievalMode": ret_mode,
+                "fallbackUsed": fallback,
+                "results": results,
+                "count": len(results),
+                "embeddingStatus": embedder_status
+            }
 
     def list_documents(self) -> List[Dict[str, Any]]:
         """Lists all indexed documents with metadata and chunk counts."""

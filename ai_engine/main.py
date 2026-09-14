@@ -40,6 +40,14 @@ except ImportError:
     except ImportError:
         pass
 
+try:
+    from actions import ActionSafetyGuard
+except ImportError:
+    try:
+        from ai_engine.actions import ActionSafetyGuard
+    except ImportError:
+        pass
+
 provider_router = ProviderRouter()
 desktop_action_service = DesktopActionService()
 workflow_engine = WorkflowEngine()
@@ -47,6 +55,7 @@ deep_doc_engine = DeepDocSearchEngine()
 ai_router = IntentTaskRouter()
 local_stt_service = LocalSTTService(auto_load=True)
 privacy_guard = PrivacyGuard()
+action_safety_guard = ActionSafetyGuard()
 
 DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes")
 
@@ -309,19 +318,49 @@ def generate_ai_response(req: ChatGenerateRequest):
             urlToOpen=None
         )
 
+    # M8.1: Action Safety Boundary & Command Interceptor
+    raw_action_val = action_safety_guard.validate_raw_prompt(raw_user_prompt)
+    if raw_action_val and not raw_action_val.allowed:
+        reply_text = f"Action blocked by safety boundary: {raw_action_val.reason}, sir."
+        save_memory_to_spring_boot(session_id, "user", raw_user_prompt)
+        save_memory_to_spring_boot(session_id, "assistant", reply_text)
+        state_manager.update_state(session_id, raw_user_prompt, reply_text, "ACTION_BLOCKED")
+        return ChatGenerateResponse(
+            reply=reply_text,
+            provider="AIGIS Action Guard -> Safety Boundary",
+            sessionId=session_id,
+            ragContextUsed=False,
+            webSearchUsed=False,
+            urlToOpen=None,
+            metadata={
+                "action": True,
+                "actionType": "PROHIBITED_COMMAND",
+                "actionStatus": "BLOCKED",
+                "reason": raw_action_val.reason,
+                "networkUsed": False
+            }
+        )
+
     # Desktop Action Command Interceptor (Apps, Folders, Volume, Media, Power State, Confirmation)
     handled_desktop, desktop_reply, desktop_provider = desktop_action_service.process_natural_command(session_id, raw_user_prompt)
     if handled_desktop:
         save_memory_to_spring_boot(session_id, "user", raw_user_prompt)
         save_memory_to_spring_boot(session_id, "assistant", desktop_reply)
         state_manager.update_state(session_id, raw_user_prompt, desktop_reply, "DESKTOP_ACTION")
+        action_type_label = "OPEN_APPLICATION" if "Opening " in desktop_reply else "SYSTEM_CONTROL"
         return ChatGenerateResponse(
             reply=desktop_reply,
             provider=desktop_provider,
             sessionId=session_id,
             ragContextUsed=False,
             webSearchUsed=False,
-            urlToOpen=None
+            urlToOpen=None,
+            metadata={
+                "action": True,
+                "actionType": action_type_label,
+                "actionStatus": "SUCCESS",
+                "networkUsed": False
+            }
         )
 
     # Workflow Scheduler Command Interceptor (Briefings, Digests, System Reports, Cleanup)
@@ -671,7 +710,10 @@ def generate_ai_response(req: ChatGenerateRequest):
         "privacyMode": privacy_provenance.get("privacyMode", "AUTO"),
         "networkUsed": privacy_provenance.get("networkUsed", engine_tag != "local"),
         "privateContextUsed": privacy_provenance.get("privateContextUsed", False),
-        "privacyIntent": privacy_provenance.get("privacyIntent", "PUBLIC")
+        "privacyIntent": privacy_provenance.get("privacyIntent", "PUBLIC"),
+        "ragContextUsed": bool(rag_used),
+        "documentGrounded": bool(rag_used),
+        "retrievalMode": "LOCAL_DOCUMENT" if rag_used else None
     }
 
     return ChatGenerateResponse(

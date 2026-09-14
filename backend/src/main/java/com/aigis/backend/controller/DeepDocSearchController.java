@@ -45,10 +45,8 @@ public class DeepDocSearchController {
 
     @PostMapping("/search")
     public ResponseEntity<Map<?, ?>> searchDocs(@RequestBody Map<String, Object> body) {
-        String query = (String) body.getOrDefault("query", "");
-        Integer topK = (Integer) body.getOrDefault("topK", 5);
         String url = pythonAiEngineUrl.replace("/ai/generate", "/api/v1/docs/search");
-        Map<?, ?> response = restClient.post().uri(url).body(Map.of("query", query, "topK", topK)).retrieve().body(Map.class);
+        Map<?, ?> response = restClient.post().uri(url).body(body).retrieve().body(Map.class);
         return ResponseEntity.ok(response != null ? response : Map.of());
     }
 

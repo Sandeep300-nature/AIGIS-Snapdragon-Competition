@@ -45,6 +45,14 @@ except ImportError:
     except ImportError:
         pass
 
+try:
+    from actions import ActionSafetyGuard
+except ImportError:
+    try:
+        from ai_engine.actions import ActionSafetyGuard
+    except ImportError:
+        pass
+
 
 # Intent match patterns for private queries
 MEMORY_QUERY_PATTERNS = [
@@ -113,6 +121,7 @@ class IntentTaskRouter:
         self.local_engine = local_engine or LocalEngine()
         self.cloud_engine = cloud_engine or CloudEngine()
         self.detector = hardware_detector or HardwareDetector
+        self.action_guard = ActionSafetyGuard()
 
         # Registered engine aliases
         self.smollm2_engine = self.local_engine
@@ -141,12 +150,19 @@ class IntentTaskRouter:
         """Classifies prompt into ACTION, SYSTEM_INFO, MEMORY_QUERY, DOCUMENT_QUERY, PRIVATE_PROJECT_QUERY, LIVE_WEB, or GENERAL_AI."""
         lowered = prompt.strip().lower()
 
-        # 1. Executable Actions (Desktop app launcher, system controls, URL navigation)
+        # 1. Executable Actions (Desktop app launcher, system controls, URL navigation, safety boundary checks)
         is_desktop_action = any(kw in lowered for kw in [
             "open notepad", "open calc", "open code", "open terminal",
             "volume up", "volume down", "mute", "lock screen"
         ])
-        if is_desktop_action or check_open_website_shortcut(prompt) or extract_url_from_text(prompt):
+        is_action = (
+            is_desktop_action or
+            check_open_website_shortcut(prompt) or
+            extract_url_from_text(prompt) or
+            bool(self.action_guard.validate_raw_prompt(prompt)) or
+            bool(self.action_guard.parse_from_prompt(prompt))
+        )
+        if is_action:
             return {
                 "intent": "ACTION",
                 "privacyIntent": "PUBLIC",

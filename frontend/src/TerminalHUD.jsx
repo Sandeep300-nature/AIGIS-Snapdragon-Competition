@@ -21,7 +21,8 @@ export default function TerminalHUD({
   onLatencyUpdate,
   onMemoryUpdate,
   onFocusHUD,
-  onResetFocusHUD
+  onResetFocusHUD,
+  onOpenDocumentManager
 }) {
   const [inputText, setInputText] = useState('');
   const [aiReply, setAiReply] = useState('');
@@ -645,6 +646,16 @@ export default function TerminalHUD({
     const meta = responseMeta.metadata || {};
     const intent = meta.intent || '';
 
+    // 0. Local Document Grounding (Priority 0 - local vault retrieval)
+    if (meta.documentGrounded || meta.ragContextUsed || intent === 'document_query') {
+      const mode = meta.retrievalMode ? ` · ${meta.retrievalMode.toUpperCase()}` : '';
+      return {
+        label: `📄 Local Document Grounded${mode}`,
+        type: 'doc-grounded',
+        title: `Grounding: Local SQLite Vault | Mode: ${meta.retrievalMode || 'hybrid'} | Network: ${meta.networkUsed ? 'ON' : 'OFF'}`
+      };
+    }
+
     // 1. Genuine local SLM inference (SmolLM2-135M on CPU)
     if (meta.localInference || meta.model === 'SmolLM2-135M-Instruct' || (provider && provider.includes('SmolLM2'))) {
       const tokSec = meta.tokensPerSec ? ` · ${meta.tokensPerSec} tok/s` : '';
@@ -803,6 +814,51 @@ export default function TerminalHUD({
           <div className="ai-response-content">
             {renderReplyContent(aiReply)}
           </div>
+
+          {/* Grounding & Privacy Provenance Bar */}
+          {(responseMeta?.metadata?.documentGrounded || responseMeta?.metadata?.ragContextUsed || responseMeta?.metadata?.privacyMode) && (
+            <div className="provenance-grounding-bar">
+              <div className="provenance-grounding-left">
+                {responseMeta.metadata.documentGrounded || responseMeta.metadata.ragContextUsed ? (
+                  <span className="grounding-badge grounded" title="Local vault documents were chunked, indexed, and retrieved to ground this response">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                    LOCAL DOCUMENT GROUNDING
+                  </span>
+                ) : (
+                  <span className="grounding-badge general" title="General AI synthesis without local document grounding">
+                    GENERAL AI RESPONSE
+                  </span>
+                )}
+                {responseMeta.metadata.retrievalMode && (
+                  <span className="grounding-mode-pill">
+                    MODE: {responseMeta.metadata.retrievalMode.toUpperCase()}
+                  </span>
+                )}
+              </div>
+              <div className="provenance-grounding-right">
+                {responseMeta.metadata.privacyMode && (
+                  <span className="privacy-mode-pill">
+                    🔒 {responseMeta.metadata.privacyMode}
+                  </span>
+                )}
+                {typeof responseMeta.metadata.networkUsed === 'boolean' && (
+                  <span className={`network-status-pill ${responseMeta.metadata.networkUsed ? 'net-on' : 'net-off'}`}>
+                    {responseMeta.metadata.networkUsed ? '📡 Network: ON' : '🛡️ Network: OFF'}
+                  </span>
+                )}
+                {onOpenDocumentManager && (
+                  <button 
+                    className="open-vault-btn-link"
+                    onClick={onOpenDocumentManager}
+                    title="Open Local Document Intelligence Vault"
+                  >
+                    Inspect Vault ↗
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {openedUrl && (
             <div className="opened-site-banner">
               <a href={openedUrl} target="_blank" rel="noopener noreferrer" className="opened-site-link">
@@ -874,6 +930,21 @@ export default function TerminalHUD({
             disabled={isThinking}
           />
         </div>
+
+        {/* Document Vault Button */}
+        <button
+          className="docs-vault-btn"
+          onClick={onOpenDocumentManager}
+          title="Open Local Document Intelligence Vault"
+        >
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+          </svg>
+          DOCS
+        </button>
 
         {/* Clear Memory Button */}
         <button

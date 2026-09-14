@@ -8,12 +8,14 @@ import ReminderNotificationModal from './ReminderNotificationModal';
 import ReminderWidget from './ReminderWidget';
 import ReminderManagerModal from './ReminderManagerModal';
 import MemoryManagerModal from './MemoryManagerModal';
+import DocumentManagerModal from './DocumentManagerModal';
 import './App.css';
 
 
 function App() {
   const [isReminderManagerOpen, setIsReminderManagerOpen] = useState(false);
   const [isMemoryManagerOpen, setIsMemoryManagerOpen] = useState(false);
+  const [isDocumentManagerOpen, setIsDocumentManagerOpen] = useState(false);
 
   const [blobParams, setBlobParams] = useState({
     timeScale: 1.2,
@@ -153,6 +155,7 @@ function App() {
         showWeather={showWeatherHUD}
         onToggleWeather={() => setShowWeatherHUD(!showWeatherHUD)}
         onOpenMemoryManager={() => setIsMemoryManagerOpen(true)}
+        onOpenDocumentManager={() => setIsDocumentManagerOpen(true)}
       />
 
       {/* Movable Telemetry HUD Card (Left Side) */}
@@ -210,6 +213,7 @@ function App() {
         }}
         onFocusHUD={(hudName) => setFocusedHUD(hudName)}
         onResetFocusHUD={() => setFocusedHUD('none')}
+        onOpenDocumentManager={() => setIsDocumentManagerOpen(true)}
       />
 
       {/* AIGIS Native Reminder & Scheduler Subsystem Overlay */}
@@ -225,6 +229,12 @@ function App() {
       <MemoryManagerModal
         isOpen={isMemoryManagerOpen}
         onClose={() => setIsMemoryManagerOpen(false)}
+      />
+
+      {/* Full Document Vault Manager Modal */}
+      <DocumentManagerModal
+        isOpen={isDocumentManagerOpen}
+        onClose={() => setIsDocumentManagerOpen(false)}
       />
       {/* Hidden Audio DOM element for WebRTC Remote Audio Track playback */}
       <audio id="aigis-realtime-remote-audio" autoPlay style={{ display: 'none' }} />

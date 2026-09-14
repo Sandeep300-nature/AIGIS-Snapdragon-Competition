@@ -8,17 +8,21 @@ export default function Navbar({
   onToggleMetrics,
   showWeather,
   onToggleWeather,
-  onOpenMemoryManager
+  onOpenMemoryManager,
+  onOpenDocumentManager
 }) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('HOME');
 
-  const navItems = ['HOME', 'MEMORY', 'SETTINGS', 'ABOUT'];
+  const navItems = ['HOME', 'DOCUMENTS', 'MEMORY', 'SETTINGS', 'ABOUT'];
 
   const handleNavClick = (item) => {
     setActiveTab(item);
     if (item === 'SETTINGS') {
       setIsSettingsOpen(!isSettingsOpen);
+    } else if (item === 'DOCUMENTS') {
+      setIsSettingsOpen(false);
+      onOpenDocumentManager?.();
     } else if (item === 'MEMORY') {
       setIsSettingsOpen(false);
       onOpenMemoryManager?.();
