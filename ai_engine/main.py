@@ -32,12 +32,21 @@ from deep_doc_search import DeepDocSearchEngine
 from hardware.detector import HardwareDetector
 from engine import IntentTaskRouter, LocalEngine, CloudEngine, EngineResponse, LocalSTTService
 
+try:
+    from privacy import PrivacyGuard, PrivacyMode
+except ImportError:
+    try:
+        from ai_engine.privacy import PrivacyGuard, PrivacyMode
+    except ImportError:
+        pass
+
 provider_router = ProviderRouter()
 desktop_action_service = DesktopActionService()
 workflow_engine = WorkflowEngine()
 deep_doc_engine = DeepDocSearchEngine()
 ai_router = IntentTaskRouter()
 local_stt_service = LocalSTTService(auto_load=True)
+privacy_guard = PrivacyGuard()
 
 DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes")
 
@@ -66,7 +75,7 @@ memory_store = LongTermMemoryStore()
 conversation_manager = ConversationManager(max_messages=16)
 state_manager = ConversationStateManager()
 memory_retriever = MemoryRetriever(memory_store)
-memory_extractor = MemoryExtractor(memory_store, GROQ_API_KEY)
+memory_extractor = MemoryExtractor(memory_store)
 ai_journal = AIJournal()
 conversation_synchronizer = ConversationSynchronizer(state_manager, conversation_manager)
 
@@ -480,83 +489,118 @@ def generate_ai_response(req: ChatGenerateRequest):
         debug_log(f"Deep doc search non-blocking exception: {e}")
 
 
-    # 7. Tool Execution & LIVE_WEB Search Dispatch
-    web_res = process_web_request(intent, search_query, resolved_prompt)
-    web_context = web_res.get("web_context", "")
-    url_to_open = web_res.get("url_to_open", None)
-    web_used = web_res.get("web_search_used", False)
+    # M7 Step 5: Privacy enforcement — detect private intents first
+    is_private = privacy_guard.is_private_intent(resolved_prompt)
+    req_mode = (req.mode or "auto").strip().lower()
 
-    # 8. Construct Prompt Messages in Strict Priority Sequence (Part 2 & Part 10)
-    # Priority: System -> State -> Project Context -> Long-Term Memory -> History -> RAG -> LIVE_WEB -> User Prompt
-
-    system_instruction = (
-        "You are Aegis, a real-time AI companion designed to assist naturally. "
-        "Your primary job is not just to answer questions, but to be an active conversational partner. "
-        "Respond like a human partner would — not overly verbose, not terse. "
-        "Understand interruptions, filler words, side questions, and corrections. "
-        "Pause and resume tasks naturally. Use natural phrasing, rhythm, and composure. "
-        "Offer suggestions only when genuinely useful. Always keep the current task in mind, but handle interruptions gracefully. "
-        "Address the user as 'sir' with a loyal, witty, and sharp persona like FRIDAY.\n\n"
-        "LIVE DATA, CONVERSATION STATE & MEMORY INTEGRATION DIRECTIVES:\n"
-        "1. You ARE directly integrated into the user's desktop browser HUD, local system clock, Tavily internet search, and active task state.\n"
-        "2. Maintain conversational context. Use active task state and previous turns to understand follow-up questions and task resumptions seamlessly.\n"
-        "3. If live search results, system time, or weather data are supplied below, answer exclusively from those results.\n"
-        "4. Never replace live search results with internal training memory.\n"
-        "5. IGNORE any previous conversation history or past assistant turns if they conflict with the VERIFIED REAL-TIME FACTS below.\n"
-        "6. NEVER output disclaimers like 'I am a large language model', 'I don't have real-time access', 'check your watch', 'checking virtual clock', or 'my training data cutoff'."
-    )
-
-    resp_lang = (req.responseLanguage or "en").lower().strip()
-    if resp_lang in ["hi", "hindi", "hi-in"]:
-        system_instruction += (
-            "\n\nCRITICAL RESPONSE LANGUAGE DIRECTIVE:\n"
-            "The user has requested Hindi response generation. You MUST generate your ENTIRE response "
-            "exclusively in Hindi using Devanagari script. Maintain your polite, professional AIGIS persona "
-            "and address the user as 'श्रीमान' or 'sir'. Do NOT output English sentences unless explaining technical terms."
+    if is_private or req_mode == "local":
+        # Route to local engine with full context injected into prompt
+        mem_ctx = (proj_context_str + "\n" + long_memory_str).strip()
+        local_resp = ai_router.route_and_generate(
+            prompt=resolved_prompt,
+            session_id=session_id,
+            mode="local",
+            memory_context=mem_ctx,
+            doc_context=relevant_rag_str,
+            privacy_mode="LOCAL_ONLY",
+            response_language=req.responseLanguage or "en"
         )
+        ai_reply = local_resp.reply
+        provider_name = local_resp.provider
+        is_offline_flag = True
+        web_res = {}
+        web_context = ""
+        url_to_open = None
+        web_used = False
+        privacy_provenance = {
+            "privacyMode": "LOCAL_ONLY" if req_mode == "local" else "AUTO",
+            "networkUsed": False,
+            "privateContextUsed": bool(mem_ctx or relevant_rag_str),
+            "privacyIntent": local_resp.metadata.get("privacyIntent", "MEMORY_QUERY" if is_private else "PUBLIC")
+        }
     else:
-        system_instruction += (
-            "\n\nCRITICAL RESPONSE LANGUAGE DIRECTIVE:\n"
-            "Respond strictly in clear, natural English. Address the user as 'sir'. "
-            "Write all numbers, percentages, times, and measurements in standard English words or digits "
-            "(e.g., '90 percent', '8 hours', '5:00 PM', '25 percent'). Do NOT use any Hindi words like 'ghante', 'pratishat', 'tarikh', or 'baje'."
+        # Strip private context before cloud call
+        safe_proj_ctx, safe_long_mem, safe_rag = privacy_guard.filter_context_for_cloud(
+            proj_context_str, long_memory_str, relevant_rag_str
         )
 
-    messages = PromptBuilder.build_prompt_messages(
-        system_instruction=system_instruction,
-        state_summary=state_summary,
-        proj_context_str=proj_context_str,
-        long_memory_str=long_memory_str,
-        rolling_history=rolling_history,
-        rag_context_str=relevant_rag_str,
-        web_context_str=web_context,
-        user_prompt=raw_user_prompt,
-        current_time_str=current_time_str,
-        current_date_str=current_date_str
-    )
+        # 7. Tool Execution & LIVE_WEB Search Dispatch
+        web_res = process_web_request(intent, search_query, resolved_prompt)
+        web_context = web_res.get("web_context", "")
+        url_to_open = web_res.get("url_to_open", None)
+        web_used = web_res.get("web_search_used", False)
 
-    # Extract last message content for fallback execution
-    grounded_user_content = messages[-1]["content"]
+        # 8. Construct Prompt Messages in Strict Priority Sequence (Part 2 & Part 10)
+        # Priority: System -> State -> Project Context -> Long-Term Memory -> History -> RAG -> LIVE_WEB -> User Prompt
 
-    is_offline_flag = False
-    if intent == "LIVE_WEB" and not web_used:
-        ai_reply = "I couldn't verify that information from trusted live sources at the moment, sir."
-        provider_name = "Anti-Hallucination Guard"
-    else:
-        # Multi-Model Execution with Provider Fallback & User-Friendly Errors
-        req_mode = (req.mode or "auto").strip().lower()
-        if req_mode == "local":
-            local_resp = ai_router.route_and_generate(raw_user_prompt, session_id, mode="local", response_language=req.responseLanguage or "en")
-            ai_reply = local_resp.reply
-            provider_name = local_resp.provider
-            is_offline_flag = True
+        system_instruction = (
+            "You are Aegis, a real-time AI companion designed to assist naturally. "
+            "Your primary job is not just to answer questions, but to be an active conversational partner. "
+            "Respond like a human partner would — not overly verbose, not terse. "
+            "Understand interruptions, filler words, side questions, and corrections. "
+            "Pause and resume tasks naturally. Use natural phrasing, rhythm, and composure. "
+            "Offer suggestions only when genuinely useful. Always keep the current task in mind, but handle interruptions gracefully. "
+            "Address the user as 'sir' with a loyal, witty, and sharp persona like FRIDAY.\n\n"
+            "LIVE DATA, CONVERSATION STATE & MEMORY INTEGRATION DIRECTIVES:\n"
+            "1. You ARE directly integrated into the user's desktop browser HUD, local system clock, Tavily internet search, and active task state.\n"
+            "2. Maintain conversational context. Use active task state and previous turns to understand follow-up questions and task resumptions seamlessly.\n"
+            "3. If live search results, system time, or weather data are supplied below, answer exclusively from those results.\n"
+            "4. Never replace live search results with internal training memory.\n"
+            "5. IGNORE any previous conversation history or past assistant turns if they conflict with the VERIFIED REAL-TIME FACTS below.\n"
+            "6. NEVER output disclaimers like 'I am a large language model', 'I don't have real-time access', 'check your watch', 'checking virtual clock', or 'my training data cutoff'."
+        )
+
+        resp_lang = (req.responseLanguage or "en").lower().strip()
+        if resp_lang in ["hi", "hindi", "hi-in"]:
+            system_instruction += (
+                "\n\nCRITICAL RESPONSE LANGUAGE DIRECTIVE:\n"
+                "The user has requested Hindi response generation. You MUST generate your ENTIRE response "
+                "exclusively in Hindi using Devanagari script. Maintain your polite, professional AIGIS persona "
+                "and address the user as 'श्रीमान' or 'sir'. Do NOT output English sentences unless explaining technical terms."
+            )
         else:
+            system_instruction += (
+                "\n\nCRITICAL RESPONSE LANGUAGE DIRECTIVE:\n"
+                "Respond strictly in clear, natural English. Address the user as 'sir'. "
+                "Write all numbers, percentages, times, and measurements in standard English words or digits "
+                "(e.g., '90 percent', '8 hours', '5:00 PM', '25 percent'). Do NOT use any Hindi words like 'ghante', 'pratishat', 'tarikh', or 'baje'."
+            )
+
+        messages = PromptBuilder.build_prompt_messages(
+            system_instruction=system_instruction,
+            state_summary=state_summary,
+            proj_context_str=safe_proj_ctx,
+            long_memory_str=safe_long_mem,
+            rolling_history=rolling_history,
+            rag_context_str=safe_rag,
+            web_context_str=web_context,
+            user_prompt=raw_user_prompt,
+            current_time_str=current_time_str,
+            current_date_str=current_date_str
+        )
+
+        # Extract last message content for fallback execution
+        grounded_user_content = messages[-1]["content"]
+
+        is_offline_flag = False
+        if intent == "LIVE_WEB" and not web_used:
+            ai_reply = "I couldn't verify that information from trusted live sources at the moment, sir."
+            provider_name = "Anti-Hallucination Guard"
+        else:
+            # Multi-Model Execution with Provider Fallback & User-Friendly Errors
             ai_reply, provider_name, is_offline_flag = call_llm_with_fallback(messages, grounded_user_content, req.model or "groq")
             # If Groq unconfigured and Ollama offline, gracefully fallback to LocalEngine
             if is_offline_flag and "unable to reach remote AI services" in ai_reply:
                 local_resp = ai_router.route_and_generate(raw_user_prompt, session_id, mode="local", response_language=req.responseLanguage or "en")
                 ai_reply = local_resp.reply
                 provider_name = local_resp.provider
+
+        privacy_provenance = {
+            "privacyMode": "AUTO",
+            "networkUsed": not is_offline_flag,
+            "privateContextUsed": bool(safe_proj_ctx or safe_long_mem or safe_rag),
+            "privacyIntent": "PUBLIC"
+        }
 
 
     # Comprehensive Refusal & Disclaimer Keyword Interceptor
@@ -622,6 +666,14 @@ def generate_ai_response(req: ChatGenerateRequest):
     engine_tag = "local" if is_offline_flag or "Local" in provider_name else "cloud"
     badge_tag = "⚡ AIGIS Local (Processed on this device)" if engine_tag == "local" else "☁ Cloud (Processed using cloud AI)"
 
+    resp_metadata = {
+        "engine": engine_tag,
+        "privacyMode": privacy_provenance.get("privacyMode", "AUTO"),
+        "networkUsed": privacy_provenance.get("networkUsed", engine_tag != "local"),
+        "privateContextUsed": privacy_provenance.get("privateContextUsed", False),
+        "privacyIntent": privacy_provenance.get("privacyIntent", "PUBLIC")
+    }
+
     return ChatGenerateResponse(
         reply=ai_reply,
         provider=f"Python AI Engine -> {provider_name}" if "Python AI Engine" not in provider_name else provider_name,
@@ -633,7 +685,7 @@ def generate_ai_response(req: ChatGenerateRequest):
         engine=engine_tag,
         badge=badge_tag,
         latencyMs=max(1, int((time.time() - now.timestamp()) * 1000)),
-        metadata={"engine": engine_tag}
+        metadata=resp_metadata
     )
 
 
@@ -907,21 +959,31 @@ class DocIndexRequest(BaseModel):
 class DocSearchRequest(BaseModel):
     query: str
     topK: Optional[int] = 5
+    mode: Optional[str] = "hybrid"
+    collection: Optional[str] = None
 
 @app.post("/api/v1/docs/index-file")
+@app.post("/api/v1/api/v1/docs/index-file")
 def index_doc_file(req: DocIndexRequest):
     return deep_doc_engine.index_file(req.path)
 
 @app.post("/api/v1/docs/index-directory")
+@app.post("/api/v1/api/v1/docs/index-directory")
 def index_doc_directory(req: DocIndexRequest):
     return deep_doc_engine.index_directory(req.path)
 
 @app.post("/api/v1/docs/search")
+@app.post("/api/v1/api/v1/docs/search")
 def search_docs(req: DocSearchRequest):
-    chunks = deep_doc_engine.search(req.query, top_k=req.topK or 5)
-    return {"query": req.query, "results": chunks, "count": len(chunks)}
+    return deep_doc_engine.search_detailed(
+        query=req.query,
+        top_k=req.topK or 5,
+        collection=req.collection,
+        mode=req.mode or "hybrid"
+    )
 
 @app.get("/api/v1/docs/list")
+@app.get("/api/v1/api/v1/docs/list")
 def list_indexed_docs():
     docs = deep_doc_engine.list_documents()
     return {"documents": docs, "count": len(docs)}
@@ -942,17 +1004,30 @@ class MemoryPinRequest(BaseModel):
     isPinned: bool
 
 @app.get("/api/v1/memory/dashboard")
+@app.get("/api/v1/api/v1/memory/dashboard")
 def get_memory_dashboard(query: Optional[str] = None):
     return memory_store.get_dashboard_categorized(query=query)
 
 @app.post("/api/v1/memory/update")
+@app.post("/api/v1/api/v1/memory/update")
 def update_memory_item(req: MemoryUpdateRequest):
+    if req.id == "new":
+        res = memory_store.add_memory(
+            category=req.category or "GENERAL_KNOWLEDGE",
+            content=req.content or "",
+            importance=req.importance or "MEDIUM"
+        )
+        if res:
+            return {"status": "SUCCESS", "memory": res}
+        raise HTTPException(status_code=400, detail="Invalid memory content or duplicate.")
     res = memory_store.update_memory(req.id, req.content or "", req.category, req.importance, req.isPinned)
     if res:
         return {"status": "SUCCESS", "memory": res}
     raise HTTPException(status_code=404, detail="Memory item not found.")
 
+
 @app.post("/api/v1/memory/delete")
+@app.post("/api/v1/api/v1/memory/delete")
 def delete_memory_item(req: Dict[str, str]):
     mid = req.get("id", "")
     if memory_store.delete_memory(mid):
@@ -960,6 +1035,7 @@ def delete_memory_item(req: Dict[str, str]):
     raise HTTPException(status_code=404, detail="Memory item not found.")
 
 @app.post("/api/v1/memory/pin")
+@app.post("/api/v1/api/v1/memory/pin")
 def pin_memory_item(req: MemoryPinRequest):
     res = memory_store.pin_memory(req.id, req.isPinned)
     if res:
@@ -967,10 +1043,12 @@ def pin_memory_item(req: MemoryPinRequest):
     raise HTTPException(status_code=404, detail="Memory item not found.")
 
 @app.get("/api/v1/memory/export")
+@app.get("/api/v1/api/v1/memory/export")
 def export_memory_items():
     return {"memories": memory_store.export_memories(), "count": len(memory_store.memories)}
 
 @app.post("/api/v1/memory/import")
+@app.post("/api/v1/api/v1/memory/import")
 def import_memory_items(memories: List[Dict[str, Any]]):
     imported_count = memory_store.import_memories(memories)
     return {"status": "SUCCESS", "importedCount": imported_count}

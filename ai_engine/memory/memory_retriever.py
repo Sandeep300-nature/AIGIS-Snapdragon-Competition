@@ -30,14 +30,26 @@ class MemoryRetriever:
             content = m.get("content", "")
             content_words = set(re.findall(r'\w+', content.lower()))
 
-            # Keyword overlap score
-            overlap = len(prompt_words.intersection(content_words))
+            # Keyword overlap score with root matching for words of length >= 4
+            exact_overlap = len(prompt_words.intersection(content_words))
+            root_overlap = sum(
+                1 for pw in prompt_words
+                if len(pw) >= 4 and any(
+                    (pw in cw or cw in pw) and cw != pw for cw in content_words if len(cw) >= 4
+                )
+            )
+            overlap = exact_overlap + root_overlap
 
             # Importance bonus
-            importance = m.get("importance", "MEDIUM")
-            bonus = 2 if importance == "HIGH" else (1 if importance == "MEDIUM" else 0)
+            importance = m.get("importance", 3)
+            if isinstance(importance, int):
+                bonus = 2 if importance >= 4 else (1 if importance == 3 else 0)
+            else:
+                imp_str = str(importance).upper()
+                bonus = 2 if imp_str in ["HIGH", "PERMANENT", "LONG_TERM"] else (1 if imp_str in ["MEDIUM", "PROJECT"] else 0)
 
             score = overlap + bonus
+
 
             if category == "PROJECT_CONTEXT":
                 # Project context memories get selected if relevant or if asking about architecture/specs

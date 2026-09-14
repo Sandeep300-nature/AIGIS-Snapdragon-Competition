@@ -22,12 +22,14 @@ from .conversation_presence import (
 )
 from .conversation_sync import ConversationSynchronizer
 from .prompt_builder import PromptBuilder
+from .local_memory_vault import LocalMemoryVault
 from .long_term_memory import LongTermMemoryStore
 from .memory_extractor import MemoryExtractor
 from .memory_retriever import MemoryRetriever
 from .ai_journal import AIJournal
 
 __all__ = [
+    "LocalMemoryVault",
     "ConversationManager",
     "ConversationStateManager",
     "TaskEngine",
@@ -45,3 +47,4 @@ __all__ = [
     "MemoryRetriever",
     "AIJournal"
 ]
+
