@@ -2,7 +2,11 @@ import os
 import io
 import time
 import tempfile
-import psutil
+
+try:
+    import psutil
+except ImportError:
+    psutil = None
 from typing import Optional, Dict, Any, Union, BinaryIO
 
 try:

@@ -7,7 +7,7 @@ import json
 import psutil
 from datetime import datetime
 from email.utils import parsedate_to_datetime
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 
 from providers import search_tavily, search_google_news_rss
 
@@ -458,7 +458,9 @@ def rank_and_validate_freshness(results: List[Dict[str, Any]], query: str, curre
         pub_date_strings.append(dt_str)
         
         if dt:
-            days_diff = max(0.0, (current_dt - dt).total_seconds() / 86400.0)
+            dt_naive = dt.replace(tzinfo=None) if getattr(dt, "tzinfo", None) else dt
+            cur_naive = current_dt.replace(tzinfo=None) if getattr(current_dt, "tzinfo", None) else current_dt
+            days_diff = max(0.0, (cur_naive - dt_naive).total_seconds() / 86400.0)
             if days_diff <= 1:
                 recency_score = 1.0
             elif days_diff <= 7:

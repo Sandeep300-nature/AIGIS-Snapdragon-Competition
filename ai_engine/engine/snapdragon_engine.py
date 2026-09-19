@@ -30,11 +30,11 @@ class HardwareNotSupportedError(RuntimeError):
 
 class SnapdragonConfig(BaseModel):
     """Configuration schema for Qualcomm AI Hub models targeting Snapdragon X Elite / X Plus."""
-    model_id: str = Field(default="Llama-3.2-1B-Instruct", description="Qualcomm AI Hub model identifier")
+    model_id: str = Field(default="qwen3_4b_instruct_2507", description="Qualcomm AI Hub model identifier")
     checkpoint: str = Field(default="DEFAULT_W4A16", description="Qualcomm AI Hub model checkpoint")
     quantization: str = Field(default="w4a16", description="Quantization precision (4-bit weights, 16-bit activations)")
-    runtime: str = Field(default="QNNExecutionProvider", description="Execution Provider runtime")
-    execution_provider: str = Field(default="QNNExecutionProvider", description="Execution Provider")
+    runtime: str = Field(default="GenieX-QAIRT", description="Execution Provider runtime")
+    execution_provider: str = Field(default="QnnHtp", description="Execution Provider")
     target_soc: str = Field(default="Snapdragon X Elite / X Plus", description="Target hardware system-on-chip")
     target_accelerator: str = Field(default="Qualcomm Hexagon NPU", description="Target neural processing unit")
     context_length: int = Field(default=4096, description="Context window token capacity")
@@ -44,11 +44,11 @@ class SnapdragonConfig(BaseModel):
 class SnapdragonNPUEngine(BaseAIEngine):
     """
     On-Device AI Engine targeting Qualcomm Snapdragon X Elite / X Plus Hexagon NPU.
-    Delegates runtime-specific orchestration to QualcommModelRunner.
+    Delegates runtime-specific orchestration to QualcommModelRunner and GenieQwenProvider.
     
     Truthful capability enforcement:
     - Never fabricates NPU execution.
-    - Inspects physical architecture (requires ARM64), loadable QNN runtime, and model assets.
+    - Inspects physical architecture (requires ARM64), loadable Genie/QAIRT runtime, and model assets.
     - Gracefully delegates to portable fallback engine (SmolLM2-135M on CPU) on x86_64 development machines.
     """
 
@@ -64,8 +64,14 @@ class SnapdragonNPUEngine(BaseAIEngine):
         self.detector = hardware_detector or HardwareDetector
         self.fallback_engine = fallback_engine
         self.auto_fallback = auto_fallback
+        resolved_model_dir = (
+            self.config.model_dir
+            or os.getenv("AIGIS_GENIE_MODEL_DIR")
+            or os.getenv("AIGIS_SNAPDRAGON_MODEL_DIR")
+            or QualcommModelRunner.DEFAULT_MODEL_DIR
+        )
         self.runner = runner or QualcommModelRunner(
-            model_dir=self.config.model_dir,
+            model_dir=resolved_model_dir,
             model_id=self.config.model_id,
             checkpoint=self.config.checkpoint,
             hardware_detector=self.detector
@@ -96,7 +102,7 @@ class SnapdragonNPUEngine(BaseAIEngine):
         report = self.get_capability_report()
         return {
             "engine": "snapdragon_npu",
-            "provider": "Qualcomm QNN / Hexagon NPU",
+            "provider": "Qualcomm Genie / Hexagon NPU",
             "model": f"{self.config.model_id}-{self.config.quantization}",
             "model_id": self.config.model_id,
             "checkpoint": self.config.checkpoint,
@@ -180,7 +186,7 @@ class SnapdragonNPUEngine(BaseAIEngine):
                     f"Snapdragon NPU inference requested, but host is not supported: {report.state_description}"
                 )
 
-        # On verified ARM64 + QNN host with model artifact:
+        # On verified ARM64 + Genie host with model artifact:
         reply, tok_count, lat_ms, meta = self.runner.run_inference(prompt, **kwargs)
         elapsed_ms = lat_ms or int((time.perf_counter() - start_time) * 1000)
 
@@ -196,20 +202,20 @@ class SnapdragonNPUEngine(BaseAIEngine):
 
         return EngineResponse(
             reply=reply,
-            provider="Qualcomm QNN / Hexagon NPU",
+            provider="Qualcomm Genie / Hexagon NPU",
             engine="local",
-            badge="⚡ AIGIS Snapdragon NPU (Hexagon Accelerated)",
+            badge="⚡ AIGIS Snapdragon NPU (Hexagon NPU Accelerated via GenieX)",
             latencyMs=max(1, elapsed_ms),
             metadata={
                 "engine": "snapdragon_npu",
-                "provider": "Qualcomm QNN / Hexagon NPU",
+                "provider": "Qualcomm Genie / Hexagon NPU",
                 "target": self.config.target_accelerator,
                 "targetAccelerator": self.config.target_accelerator,
                 "model": self.config.model_id,
                 "checkpoint": self.config.checkpoint,
                 "quantization": self.config.quantization,
-                "runtime": "ONNX Runtime GenAI",
-                "executionProvider": "QNNExecutionProvider",
+                "runtime": self.config.runtime,
+                "executionProvider": self.config.execution_provider,
                 "simulated": False,
                 "hardware_valid": True,
                 "hardwareValid": True,

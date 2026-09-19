@@ -1,9 +1,13 @@
 import os
 import platform
-import psutil
 import shutil
 import subprocess
 from typing import Dict, Any, List, Optional
+
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
 try:
     import winreg
@@ -77,8 +81,8 @@ class HardwareDetector:
         if not brand_string:
             brand_string = raw_processor or "Unknown CPU"
 
-        physical_cores = psutil.cpu_count(logical=False) or 0
-        logical_cores = psutil.cpu_count(logical=True) or 0
+        physical_cores = (psutil.cpu_count(logical=False) if psutil else None) or os.cpu_count() or 0
+        logical_cores = (psutil.cpu_count(logical=True) if psutil else None) or os.cpu_count() or 0
 
         # Check if CPU string indicates Qualcomm or Snapdragon
         lower_brand = brand_string.lower()
@@ -99,27 +103,36 @@ class HardwareDetector:
     @staticmethod
     def get_memory_info() -> Dict[str, Any]:
         """Detects total and available system RAM."""
-        try:
-            vm = psutil.virtual_memory()
-            total_gb = round(vm.total / (1024 ** 3), 2)
-            avail_gb = round(vm.available / (1024 ** 3), 2)
-            used_gb = round(vm.used / (1024 ** 3), 2)
-            return {
-                "totalBytes": vm.total,
-                "totalGb": total_gb,
-                "availableGb": avail_gb,
-                "usedGb": used_gb,
-                "percentUsed": round(vm.percent, 1)
-            }
-        except Exception as e:
-            return {
-                "totalBytes": 0,
-                "totalGb": 0.0,
-                "availableGb": 0.0,
-                "usedGb": 0.0,
-                "percentUsed": 0.0,
-                "error": str(e)
-            }
+        if psutil:
+            try:
+                vm = psutil.virtual_memory()
+                total_gb = round(vm.total / (1024 ** 3), 2)
+                avail_gb = round(vm.available / (1024 ** 3), 2)
+                used_gb = round(vm.used / (1024 ** 3), 2)
+                return {
+                    "totalBytes": vm.total,
+                    "totalGb": total_gb,
+                    "availableGb": avail_gb,
+                    "usedGb": used_gb,
+                    "percentUsed": round(vm.percent, 1)
+                }
+            except Exception as e:
+                return {
+                    "totalBytes": 0,
+                    "totalGb": 0.0,
+                    "availableGb": 0.0,
+                    "usedGb": 0.0,
+                    "percentUsed": 0.0,
+                    "error": str(e)
+                }
+        return {
+            "totalBytes": 0,
+            "totalGb": 0.0,
+            "availableGb": 0.0,
+            "usedGb": 0.0,
+            "percentUsed": 0.0,
+            "note": "psutil not installed; memory metrics unavailable"
+        }
 
     @staticmethod
     def get_gpu_info() -> Dict[str, Any]:
@@ -338,6 +351,60 @@ class HardwareDetector:
             "status": status
         }
 
+    @staticmethod
+    def get_genie_status(arch_info: Dict[str, Any], cpu_info: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Tests Qualcomm Genie / GenieX runtime and model bundle availability independently.
+        ZERO fabrication: never claims Genie runtime or NPU acceleration when absent.
+        """
+        is_arm64 = arch_info.get("isArm64", False)
+        is_snapdragon = cpu_info.get("isSnapdragon", False)
+
+        # Check for Genie runtime executables and DLLs
+        genie_tools = ["genie-t2t-run", "genie-t2t-run.exe", "geniex-bench", "geniex-bench.exe"]
+        tools_found = [t for t in genie_tools if shutil.which(t) is not None]
+
+        genie_dlls = ["genie.dll", "QnnHtp.dll", "QnnSystem.dll"]
+        dlls_found = [d for d in genie_dlls if shutil.which(d) is not None]
+
+        genie_root = os.environ.get("GENIE_ROOT") or os.environ.get("GENIEX_PATH") or os.environ.get("QAIRT_SDK_ROOT")
+
+        # Discover model bundle via configurable environment variable
+        default_bundle_dir = r"D:\AIGIS-Snapdragon-Models\qwen3_4b_instruct_2507-geniex_qairt-w4a16-qualcomm_snapdragon_x_elite"
+        bundle_dir = os.getenv("AIGIS_GENIE_MODEL_DIR", os.getenv("AIGIS_SNAPDRAGON_MODEL_DIR", default_bundle_dir))
+
+        bundle_found = False
+        missing_bundle_files = []
+        expected_files = ["genie_config.json", "part1_of_4.bin", "part2_of_4.bin", "part3_of_4.bin", "part4_of_4.bin"]
+        if os.path.isdir(bundle_dir):
+            existing = set(os.listdir(bundle_dir))
+            missing_bundle_files = [f for f in expected_files if f not in existing]
+            bundle_found = (len(missing_bundle_files) == 0)
+
+        runtime_available = is_arm64 and is_snapdragon and (len(tools_found) > 0 or len(dlls_found) > 0)
+
+        if not is_arm64:
+            status = "Unavailable (running on x64 development host; Qualcomm Genie NPU runtime requires Windows on Snapdragon ARM64)"
+        elif not runtime_available:
+            status = "ARM64 host detected, but Qualcomm Genie runtime components (genie-t2t-run/genie.dll) not found in PATH"
+        elif not bundle_found:
+            status = f"Genie runtime detected, but Qwen3 bundle missing files at '{bundle_dir}': {missing_bundle_files}"
+        else:
+            status = "Available (Qualcomm Genie runtime & Qwen3-4B W4A16 bundle verified on Snapdragon)"
+
+        return {
+            "runtimeAvailable": runtime_available,
+            "toolsFound": tools_found,
+            "dllsFound": dlls_found,
+            "genieRoot": genie_root,
+            "bundleFound": bundle_found,
+            "bundleDir": bundle_dir,
+            "missingBundleFiles": missing_bundle_files,
+            "modelId": "qwen3_4b_instruct_2507",
+            "runtime": "GenieX-QAIRT",
+            "status": status
+        }
+
     @classmethod
     def get_capabilities(cls) -> Dict[str, Any]:
         """
@@ -353,6 +420,7 @@ class HardwareDetector:
         cuda_status = cls.get_cuda_status(gpu_info, ort_info)
         qnn_status = cls.get_qnn_status(ort_info)
         snapdragon_status = cls.get_snapdragon_status(arch_info, cpu_info, qnn_status)
+        genie_status = cls.get_genie_status(arch_info, cpu_info)
 
         # Truthful Device Classification
         if snapdragon_status.get("detected"):
@@ -375,6 +443,7 @@ class HardwareDetector:
             "accelerators": {
                 "cuda": cuda_status,
                 "qnn": qnn_status,
-                "snapdragonNpu": snapdragon_status
+                "snapdragonNpu": snapdragon_status,
+                "genie": genie_status
             }
         }

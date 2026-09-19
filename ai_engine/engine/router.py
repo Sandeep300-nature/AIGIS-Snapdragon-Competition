@@ -133,8 +133,14 @@ class IntentTaskRouter:
         local_engine: Optional[LocalEngine] = None,
         cloud_engine: Optional[CloudEngine] = None,
         snapdragon_engine: Optional[SnapdragonNPUEngine] = None,
-        hardware_detector: Optional[Any] = None
+        hardware_detector: Optional[Any] = None,
+        competition_mode: Optional[bool] = None
     ):
+        self.competition_mode = (
+            competition_mode
+            if competition_mode is not None
+            else os.getenv("AIGIS_COMPETITION_MODE", "false").lower() in ("true", "1", "yes")
+        )
         self.local_engine = local_engine or LocalEngine()
         self.cloud_engine = cloud_engine or CloudEngine()
         self.detector = hardware_detector or HardwareDetector
@@ -162,6 +168,7 @@ class IntentTaskRouter:
         if self.snapdragon_engine and self.snapdragon_engine.is_available():
             return self.snapdragon_engine
         return self.local_engine
+
 
     def classify_intent(self, prompt: str) -> Dict[str, Any]:
         """Classifies prompt into ACTION, SYSTEM_INFO, MEMORY_QUERY, DOCUMENT_QUERY, PRIVATE_PROJECT_QUERY, LIVE_WEB, or GENERAL_AI."""
@@ -231,6 +238,22 @@ class IntentTaskRouter:
             }
 
         # 3. Live / Current Web Information
+        if self.competition_mode:
+            if is_time_sensitive_query(prompt):
+                return {
+                    "intent": "LIVE_WEB",
+                    "privacyIntent": "PUBLIC",
+                    "preferredEngine": "local",
+                    "searchQuery": prompt,
+                    "reason": "Competition mode requires strict on-device execution; live web query held local."
+                }
+            return {
+                "intent": "GENERAL_AI",
+                "privacyIntent": "PUBLIC",
+                "preferredEngine": "local",
+                "reason": "Competition mode routes general inquiries strictly to local on-device intelligence."
+            }
+
         intent_data = classify_intent_llm(prompt, self.cloud_engine.api_key)
         detected_intent = intent_data.get("intent", "GENERAL_AI")
         search_q = intent_data.get("search_query", prompt) or prompt
@@ -276,6 +299,9 @@ class IntentTaskRouter:
         Executes the privacy-gated multi-tier routing policy and returns an EngineResponse.
         """
         normalized_mode = (mode or "auto").strip().lower()
+        if self.competition_mode:
+            normalized_mode = "local"
+
         classification = self.classify_intent(prompt)
         intent = classification.get("intent", "GENERAL_AI")
         privacy_intent = classification.get("privacyIntent", "PUBLIC")
@@ -306,27 +332,31 @@ class IntentTaskRouter:
             resp.metadata["networkUsed"] = False
             resp.metadata["privateContextUsed"] = bool(context_blocks)
             resp.metadata["privacyIntent"] = intent
+            if self.competition_mode:
+                resp.metadata["competitionMode"] = True
             return resp
 
         # =========================================================================
-        # 1. EXPLICIT LOCAL MODE
+        # 1. EXPLICIT LOCAL MODE OR COMPETITION LOCAL-ONLY ENFORCEMENT
         # =========================================================================
         if normalized_mode == "local":
             if intent == "LIVE_WEB":
-                # Never hallucinate live facts with SmolLM2 in local mode
+                reason_msg = "Competition mode blocks external web and cloud access." if self.competition_mode else "Explicit Local mode blocks external web and cloud access."
+                reply_msg = "Current and live information cannot be verified in Competition Local-Only mode without network connectivity, sir." if self.competition_mode else "Current and live information cannot be verified in Local-Only mode without network connectivity, sir."
                 return EngineResponse(
-                    reply="Current and live information cannot be verified in Local-Only mode without network connectivity, sir.",
-                    provider="AIGIS Local Engine -> Privacy Guard",
+                    reply=reply_msg,
+                    provider="AIGIS Local Engine -> Competition Guard" if self.competition_mode else "AIGIS Local Engine -> Privacy Guard",
                     engine="local",
-                    badge="⚡ AIGIS Local (Privacy Guard)",
+                    badge="⚡ AIGIS Local (Competition Guard)" if self.competition_mode else "⚡ AIGIS Local (Privacy Guard)",
                     latencyMs=0,
                     metadata={
                         "intent": "live_web",
-                        "routingMode": "enforced_local",
+                        "routingMode": "competition_local_enforced" if self.competition_mode else "enforced_local",
                         "localInference": False,
                         "networkUsed": False,
                         "verified": False,
-                        "reason": "Explicit Local mode blocks external web and cloud access.",
+                        "competitionMode": self.competition_mode,
+                        "reason": reason_msg,
                         "privacyMode": privacy_mode,
                         "privateContextUsed": bool(memory_context or doc_context),
                         "privacyIntent": privacy_intent
@@ -348,12 +378,14 @@ class IntentTaskRouter:
                 raw_user_prompt=prompt,
                 **kwargs
             )
-            resp.metadata["routingMode"] = "enforced_local"
-            resp.metadata["routingReason"] = "User explicitly selected Local On-Device processing."
+            resp.metadata["routingMode"] = "competition_local_enforced" if self.competition_mode else "enforced_local"
+            resp.metadata["routingReason"] = "AIGIS Snapdragon Competition Mode enforces on-device execution." if self.competition_mode else "User explicitly selected Local On-Device processing."
             resp.metadata["privacyMode"] = privacy_mode
             resp.metadata["networkUsed"] = False
             resp.metadata["privateContextUsed"] = bool(context_blocks)
             resp.metadata["privacyIntent"] = privacy_intent
+            if self.competition_mode:
+                resp.metadata["competitionMode"] = True
             return resp
 
         # =========================================================================

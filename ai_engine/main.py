@@ -52,7 +52,8 @@ provider_router = ProviderRouter()
 desktop_action_service = DesktopActionService()
 workflow_engine = WorkflowEngine()
 deep_doc_engine = DeepDocSearchEngine()
-ai_router = IntentTaskRouter()
+COMPETITION_MODE = os.getenv("AIGIS_COMPETITION_MODE", "true").lower() in ("true", "1", "yes")
+ai_router = IntentTaskRouter(competition_mode=COMPETITION_MODE)
 local_stt_service = LocalSTTService(auto_load=True)
 privacy_guard = PrivacyGuard()
 action_safety_guard = ActionSafetyGuard()
@@ -497,13 +498,17 @@ def generate_ai_response(req: ChatGenerateRequest):
 
 
     # 3. Top-Level LLM Intent Classification using Resolved Prompt
-    intent_data = classify_intent_llm(resolved_prompt, GROQ_API_KEY)
-    intent = intent_data.get("intent", "GENERAL_AI")
-    confidence = float(intent_data.get("confidence", 1.0))
-    search_query = intent_data.get("search_query", resolved_prompt) or resolved_prompt
-
-    if confidence < 0.70:
+    if COMPETITION_MODE:
         intent = "GENERAL_AI"
+        confidence = 1.0
+        search_query = resolved_prompt
+    else:
+        intent_data = classify_intent_llm(resolved_prompt, GROQ_API_KEY)
+        intent = intent_data.get("intent", "GENERAL_AI")
+        confidence = float(intent_data.get("confidence", 1.0))
+        search_query = intent_data.get("search_query", resolved_prompt) or resolved_prompt
+        if confidence < 0.70:
+            intent = "GENERAL_AI"
 
     debug_log(f"Intent: {intent} (Confidence: {confidence}) | Search Query: '{search_query}'")
 
@@ -528,11 +533,11 @@ def generate_ai_response(req: ChatGenerateRequest):
         debug_log(f"Deep doc search non-blocking exception: {e}")
 
 
-    # M7 Step 5: Privacy enforcement — detect private intents first
+    # M7 Step 5: Privacy enforcement & Competition Local Mode — detect private intents first
     is_private = privacy_guard.is_private_intent(resolved_prompt)
     req_mode = (req.mode or "auto").strip().lower()
 
-    if is_private or req_mode == "local":
+    if is_private or req_mode == "local" or COMPETITION_MODE:
         # Route to local engine with full context injected into prompt
         mem_ctx = (proj_context_str + "\n" + long_memory_str).strip()
         local_resp = ai_router.route_and_generate(
@@ -792,10 +797,11 @@ def api_ai_generate(req: ChatGenerateRequest):
     Routes to LocalEngine (on-device) or CloudEngine (remote API) based on mode & intent.
     """
     start_time = time.perf_counter()
+    target_mode = "local" if COMPETITION_MODE else (req.mode or "auto")
     resp = ai_router.route_and_generate(
         prompt=req.prompt,
         session_id=req.sessionId or "default-session",
-        mode=req.mode or "auto",
+        mode=target_mode,
         response_language=req.responseLanguage or "en"
     )
     elapsed_ms = int((time.perf_counter() - start_time) * 1000)
