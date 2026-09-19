@@ -24,3 +24,8 @@ ai_engine/models/**/cache/
 .DS_Store
 desktop.ini
 Thumbs.db
+
+# Runtime databases
+*.db
+*.mv.db
+*.trace.db
