@@ -107,6 +107,23 @@ class ContentClassifier:
         "my memory",
         "stored memories",
         "what have you remembered",
+        # Natural query variants (asking about previously stored facts/instructions)
+        "ask you to remember",
+        "asked you to remember",
+        "ask you to recall",
+        "asked you to recall",
+        "tell you to remember",
+        "told you to remember",
+        "what did i ask you to remember",
+        "what did i tell you to remember",
+        "what did i ask you to recall",
+        "what did i tell you to recall",
+        "what i asked you to remember",
+        "what i told you to remember",
+        "what you remember",
+        "what you recall",
+        "things to remember",
+        "things you remember",
     ]
 
     DOCUMENT_QUERY_PATTERNS = [

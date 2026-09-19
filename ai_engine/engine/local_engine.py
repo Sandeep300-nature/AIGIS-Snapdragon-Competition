@@ -80,8 +80,23 @@ class LocalEngine(BaseAIEngine):
         **kwargs
     ) -> EngineResponse:
         start_time = time.perf_counter()
-        lowered = prompt.strip().lower()
         now = datetime.now()
+
+        # Extract actual user request, excluding any prepended memory/document context blocks
+        raw_user_prompt = kwargs.get("raw_user_prompt") or kwargs.get("user_prompt")
+        if not raw_user_prompt:
+            if "\n\nUser Request: " in prompt:
+                user_request = prompt.split("\n\nUser Request: ", 1)[1].strip()
+            elif "\nUser Request: " in prompt:
+                user_request = prompt.split("\nUser Request: ", 1)[1].strip()
+            elif prompt.startswith("User Request: "):
+                user_request = prompt[len("User Request: "):].strip()
+            else:
+                user_request = prompt.strip()
+        else:
+            user_request = str(raw_user_prompt).strip()
+
+        request_lowered = user_request.lower()
 
         caps = self._get_capabilities()
         accelerator_label = self.get_accelerator_label()
@@ -93,7 +108,7 @@ class LocalEngine(BaseAIEngine):
         # =========================================================================
 
         # 1a. Prohibited command & destructive execution interceptor
-        raw_val = self.action_guard.validate_raw_prompt(prompt)
+        raw_val = self.action_guard.validate_raw_prompt(user_request)
         if raw_val and not raw_val.allowed:
             elapsed_ms = int((time.perf_counter() - start_time) * 1000)
             return self._build_local_response(
@@ -111,7 +126,7 @@ class LocalEngine(BaseAIEngine):
             )
 
         # 1b. Structured action request validation & unified execution check (M8.2)
-        action_req = self.action_guard.parse_from_prompt(prompt, session_id)
+        action_req = self.action_guard.parse_from_prompt(user_request, session_id)
         if action_req:
             action_result = self.action_executor.execute(action_req)
             elapsed_ms = int((time.perf_counter() - start_time) * 1000)
@@ -151,7 +166,7 @@ class LocalEngine(BaseAIEngine):
         # 1c. Native Desktop Application & System Hardware Actions (Notepad, Calc, Volume, etc.)
         if self.desktop_action_service:
             handled_desktop, desktop_reply, desktop_provider = self.desktop_action_service.process_natural_command(
-                session_id, prompt
+                session_id, user_request
             )
             if handled_desktop:
                 elapsed_ms = int((time.perf_counter() - start_time) * 1000)
@@ -172,11 +187,11 @@ class LocalEngine(BaseAIEngine):
 
         # 1d. Web / Browser Navigation Actions (YouTube, GitHub, Google, explicit URLs)
         target_url = None
-        explicit_url = extract_url_from_text(prompt)
+        explicit_url = extract_url_from_text(user_request)
         if explicit_url:
             target_url = explicit_url
         else:
-            target_url = check_open_website_shortcut(prompt)
+            target_url = check_open_website_shortcut(user_request)
 
         if target_url:
             elapsed_ms = int((time.perf_counter() - start_time) * 1000)
@@ -210,8 +225,8 @@ class LocalEngine(BaseAIEngine):
         # =========================================================================
 
         # 2a. System Time & Date Queries (OS-level truth)
-        is_time = any(p in lowered for p in ["what time is it", "current time", "what's the time", "tell me the time"]) or lowered in ["time", "time now"]
-        is_date = any(p in lowered for p in ["what's today's date", "what is today's date", "today's date", "what day is it", "what day is today"]) or lowered in ["date", "today date"]
+        is_time = any(p in request_lowered for p in ["what time is it", "current time", "what's the time", "tell me the time"]) or request_lowered in ["time", "time now"]
+        is_date = any(p in request_lowered for p in ["what's today's date", "what is today's date", "today's date", "what day is it", "what day is today"]) or request_lowered in ["date", "today date"]
 
         if is_time and is_date:
             reply = f"It is {now.strftime('%I:%M %p')} on {now.strftime('%A, %B %d, %Y')}, sir."
@@ -228,7 +243,7 @@ class LocalEngine(BaseAIEngine):
 
         # 2b. Hardware / Accelerator Inquiries
         hw_keywords = ["hardware", "specs", "accelerator", "npu", "cpu", "gpu", "snapdragon", "system specs", "device info"]
-        if any(kw in lowered for kw in hw_keywords) and any(w in lowered for w in ["what", "check", "show", "tell", "status", "info"]):
+        if any(kw in request_lowered for kw in hw_keywords) and any(w in request_lowered for w in ["what", "check", "show", "tell", "status", "info"]):
             arch = caps.get("architecture", "Unknown")
             cpu_brand = caps.get("cpu", {}).get("brand", "Unknown CPU")
             gpu_name = caps.get("gpu", {}).get("name", "Unknown GPU")
@@ -248,7 +263,7 @@ class LocalEngine(BaseAIEngine):
             return self._build_local_response(reply, provider_name, elapsed_ms, {"intent": "hardware_telemetry"})
 
         # 2c. Privacy & Processing Location Inquiries
-        if any(kw in lowered for kw in ["where are you running", "is this local", "are you local", "is my data private", "privacy mode"]):
+        if any(kw in request_lowered for kw in ["where are you running", "is this local", "are you local", "is my data private", "privacy mode"]):
             reply = (
                 f"I am executing locally on this physical workstation, sir. "
                 f"Your query was processed entirely on-device via {accelerator_label} "
@@ -258,12 +273,12 @@ class LocalEngine(BaseAIEngine):
             return self._build_local_response(reply, provider_name, elapsed_ms, {"intent": "privacy_verification"})
 
         # 2d. Identity & Assistant Capabilities
-        is_identity = any(kw in lowered for kw in ["who are you", "what are you", "what is aigis", "introduce yourself"])
-        is_capability = any(kw in lowered for kw in ["what can you do", "capabilities", "tell me about yourself"])
+        is_identity = any(kw in request_lowered for kw in ["who are you", "what are you", "what is aigis", "introduce yourself"])
+        is_capability = any(kw in request_lowered for kw in ["what can you do", "capabilities", "tell me about yourself"])
 
         if is_identity or is_capability:
             model_tag = self.slm_pipeline.model_name if (self.slm_pipeline and self.slm_pipeline.is_available()) else "On-Device Core"
-            if is_capability and not (is_identity and "who are you" in lowered and "what can you do" not in lowered):
+            if is_capability and not (is_identity and "who are you" in request_lowered and "what can you do" not in request_lowered):
                 reply = (
                     f"I am AIGIS — an advanced, privacy-first personal AI assistant engineered for local-first execution, sir.\n\n"
                     f"My currently verified capabilities include:\n"
@@ -291,8 +306,8 @@ class LocalEngine(BaseAIEngine):
         # GUARD: Prevent SmolLM2 Hallucination on Live / Time-Sensitive Queries
         # =========================================================================
         # SmolLM2 is a static on-device model and MUST NEVER answer live web queries.
-        intent_info = classify_intent_llm(prompt)
-        if intent_info.get("intent") == "LIVE_WEB" or is_time_sensitive_query(prompt):
+        intent_info = classify_intent_llm(user_request)
+        if intent_info.get("intent") == "LIVE_WEB" or is_time_sensitive_query(user_request):
             elapsed_ms = int((time.perf_counter() - start_time) * 1000)
             return self._build_local_response(
                 reply="Current and live information cannot be verified locally on this device, sir. Please enable online web services for real-time data.",

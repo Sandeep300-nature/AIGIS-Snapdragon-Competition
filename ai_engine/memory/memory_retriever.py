@@ -1,6 +1,25 @@
 import re
 from typing import List, Dict, Any, Tuple
 
+# Comprehensive stop-word set to filter out non-informative grammatical words during relevance scoring
+STOP_WORDS = {
+    "a", "about", "above", "after", "again", "against", "all", "am", "an", "and", "any", "are", "aren't",
+    "as", "at", "be", "because", "been", "before", "being", "below", "between", "both", "but", "by",
+    "can", "can't", "cannot", "could", "couldn't", "did", "didn't", "do", "does", "doesn't", "doing",
+    "don't", "down", "during", "each", "few", "for", "from", "further", "had", "hadn't", "has", "hasn't",
+    "have", "haven't", "having", "he", "he'd", "he'll", "he's", "her", "here", "here's", "hers", "herself",
+    "him", "himself", "his", "how", "how's", "i", "i'd", "i'll", "i'm", "i've", "if", "in", "into", "is",
+    "isn't", "it", "it's", "its", "itself", "let's", "me", "more", "most", "mustn't", "my", "myself", "no",
+    "nor", "not", "of", "off", "on", "once", "only", "or", "other", "ought", "our", "ours", "ourselves",
+    "out", "over", "own", "same", "shan't", "she", "she'd", "she'll", "she's", "should", "shouldn't", "so",
+    "some", "such", "than", "that", "that's", "the", "their", "theirs", "them", "themselves", "then", "there",
+    "there's", "these", "they", "they'd", "they'll", "they're", "they've", "this", "those", "through", "to",
+    "too", "under", "until", "up", "very", "was", "wasn't", "we", "we'd", "we'll", "we're", "we've", "were",
+    "weren't", "what", "what's", "when", "when's", "where", "where's", "which", "while", "who", "who's",
+    "whom", "why", "why's", "with", "won't", "would", "wouldn't", "you", "you'd", "you'll", "you're", "you've",
+    "your", "yours", "yourself", "yourselves", "tell", "give", "show", "know"
+}
+
 class MemoryRetriever:
     """
     Part 5 — Memory Retriever
@@ -20,7 +39,11 @@ class MemoryRetriever:
         if not active_memories:
             return "", ""
 
-        prompt_words = set(re.findall(r'\w+', user_prompt.lower()))
+        # Filter out grammatical stop-words from prompt
+        raw_prompt_words = set(re.findall(r'\w+', user_prompt.lower()))
+        prompt_words = {w for w in raw_prompt_words if w not in STOP_WORDS}
+        if not prompt_words:
+            prompt_words = raw_prompt_words
 
         project_scored = []
         longterm_scored = []
@@ -28,7 +51,10 @@ class MemoryRetriever:
         for m in active_memories:
             category = m.get("category", "")
             content = m.get("content", "")
-            content_words = set(re.findall(r'\w+', content.lower()))
+            raw_content_words = set(re.findall(r'\w+', content.lower()))
+            content_words = {w for w in raw_content_words if w not in STOP_WORDS and w not in ("fact", "note", "preference")}
+            if not content_words:
+                content_words = raw_content_words
 
             # Keyword overlap score with root matching for words of length >= 4
             exact_overlap = len(prompt_words.intersection(content_words))
@@ -56,7 +82,14 @@ class MemoryRetriever:
                 if overlap > 0 or any(kw in user_prompt.lower() for kw in ["architecture", "aigis", "backend", "python", "tavily", "provider", "spring boot"]):
                     project_scored.append((score, content))
             else:
-                if overlap > 0:
+                # Long-term user memories get selected if relevant or if explicitly inquiring about stored memory notes
+                is_memory_recall_query = any(kw in user_prompt.lower() for kw in [
+                    "ask you to remember", "asked you to remember",
+                    "tell you to remember", "told you to remember",
+                    "ask you to recall", "asked you to recall",
+                    "what memories", "stored memories", "all memories"
+                ])
+                if overlap > 0 or is_memory_recall_query:
                     longterm_scored.append((score, content))
 
         # Sort by score descending
