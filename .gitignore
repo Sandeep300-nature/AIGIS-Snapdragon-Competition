@@ -29,3 +29,7 @@ Thumbs.db
 *.db
 *.mv.db
 *.trace.db
+
+# Environment & Secrets
+.env
+*.env
