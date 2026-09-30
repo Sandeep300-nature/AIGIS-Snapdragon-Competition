@@ -18,7 +18,8 @@ import java.util.stream.Collectors;
 
 /**
  * Service for maintaining multi-turn conversation memory history per session.
- * Stores conversation IDs, session metadata, and chat history directly into Spring Data JPA Database.
+ * Stores conversation IDs, session metadata, and chat history directly into
+ * Spring Data JPA Database.
  */
 @Service
 public class ConversationMemoryService {
@@ -31,8 +32,7 @@ public class ConversationMemoryService {
 
     public ConversationMemoryService(
             ConversationRepository conversationRepository,
-            ChatMessageRepository chatMessageRepository
-    ) {
+            ChatMessageRepository chatMessageRepository) {
         this.conversationRepository = conversationRepository;
         this.chatMessageRepository = chatMessageRepository;
     }
@@ -43,8 +43,9 @@ public class ConversationMemoryService {
     @Transactional(readOnly = true)
     public List<ChatMessage> getHistory(String sessionId) {
         String key = sanitizeSessionId(sessionId);
-        List<ChatMessageEntity> entities = chatMessageRepository.findByConversationConversationIdOrderByTimestampAsc(key);
-        
+        List<ChatMessageEntity> entities = chatMessageRepository
+                .findByConversationConversationIdOrderByTimestampAsc(key);
+
         // Sliding window limit
         if (entities.size() > MAX_HISTORY_MESSAGES) {
             entities = entities.subList(entities.size() - MAX_HISTORY_MESSAGES, entities.size());
@@ -56,12 +57,13 @@ public class ConversationMemoryService {
     }
 
     /**
-     * Appends a new chat message (user or assistant) to session history in Database.
+     * Appends a new chat message (user or assistant) to session history in
+     * Database.
      */
     @Transactional
     public void addMessage(String sessionId, ChatMessage message) {
         String key = sanitizeSessionId(sessionId);
-        
+
         ConversationEntity conversation = conversationRepository.findByConversationId(key)
                 .orElseGet(() -> conversationRepository.save(new ConversationEntity(key, "Session: " + key)));
 

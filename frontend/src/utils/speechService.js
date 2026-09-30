@@ -241,6 +241,193 @@ function numberToWords(num) {
   return n.toString();
 }
 
+// ── Dedicated Speech Sanitization Layer ──────────────────────────────────────
+export function sanitizeSpeechText(text) {
+  if (!text) return '';
+  let s = String(text);
+
+  // 1. Remove decorative / status emojis
+  s = s.replace(/[\u{1F300}-\u{1F9FF}\u{1FA00}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F1E0}-\u{1F1FF}]/gu, ' ');
+
+  // 2. Markdown Code Blocks: remove ```language / ``` markers, preserve code body
+  s = s.replace(/```[a-zA-Z0-9_-]*\n?([\s\S]*?)```/g, '$1');
+
+  // 3. Markdown Inline Code: `code` -> code (prevent saying "backtick")
+  s = s.replace(/`([^`]+)`/g, '$1');
+
+  // 4. Markdown Images & Links: [text](url) -> text (strip URL so TTS does not read http-colon-slash)
+  s = s.replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1');
+  s = s.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+  s = s.replace(/https?:\/\/\S+/g, 'web link');
+
+  // 5. Markdown Headers: # Heading -> Heading (prevent saying "hashtag" or "hash")
+  s = s.replace(/^#{1,6}\s+(.+)$/gm, '$1');
+
+  // 6. Markdown Blockquotes: > quote -> quote
+  s = s.replace(/^>\s*(.+)$/gm, '$1');
+
+  // 7. Decorative divider lines (---, ***, ===, ___) -> remove cleanly so they do not produce stray commas
+  s = s.replace(/^[\s\-_=*]{3,}$/gm, '');
+
+  // 8. Markdown Bold / Italics / Strikethrough (prevent saying "asterisk", "star", "underscore")
+  s = s.replace(/\*{3}([^*]+)\*{3}/g, '$1');
+  s = s.replace(/_{3}([^_]+)_{3}/g, '$1');
+  s = s.replace(/\*{2}([^*]+)\*{2}/g, '$1');
+  s = s.replace(/_{2}([^_]+)_{2}/g, '$1');
+  s = s.replace(/\*([^*]+)\*/g, '$1');
+  s = s.replace(/(?<!\w)_([^_]+)_(?!\w)/g, '$1');
+  s = s.replace(/~~([^~]+)~~/g, '$1');
+
+  // 9. Table borders / cell separators (|) -> natural pause
+  s = s.replace(/\|/g, ', ');
+
+  // 10. Trademarks & Registered symbols: Intel(R) Core(TM) -> Intel Core
+  s = s.replace(/\(\s*[rR]\s*\)/g, '');
+  s = s.replace(/\(\s*[tT][mM]\s*\)/g, '');
+  s = s.replace(/\(\s*[cC]\s*\)/g, '');
+  s = s.replace(/[®™©]/g, '');
+
+  // 11. Technical Terms & Architecture Identifiers (processed BEFORE general symbol normalization)
+  // x86_64 / x86_32 -> x86-64 / x86-32
+  s = s.replace(/\bx86_64\b/gi, 'x86-64');
+  s = s.replace(/\bx86_32\b/gi, 'x86-32');
+
+  // AIGIS / A-I-G-I-S / A I G I S / A.I.G.I.S. -> Aigis
+  s = s.replace(/\bA\s*-\s*I\s*-\s*G\s*-\s*I\s*-\s*S\b/gi, 'Aigis');
+  s = s.replace(/\bA\s+I\s+G\s+I\s+S\b/gi, 'Aigis');
+  s = s.replace(/(?:\bA\.I\.G\.I\.S\.|\bA\.I\.G\.I\.S\b)/gi, 'Aigis');
+  s = s.replace(/\bAIGIS\b/g, 'Aigis');
+
+  // GenieX -> Genie X
+  s = s.replace(/\bGenieX\b/g, 'Genie X');
+
+  // Qwen3-4B -> Qwen 3 4B, Qwen3 -> Qwen 3
+  s = s.replace(/\bQwen3-4B\b/gi, 'Qwen 3 4B');
+  s = s.replace(/\bQwen3\b/gi, 'Qwen 3');
+
+  // Technical word hyphens: on-device -> on device, real-time -> real time, built-in -> built in
+  // (Matches alpha words only, preserving numeric technical identifiers like x86-64)
+  s = s.replace(/\b([a-zA-Z]+)-([a-zA-Z]+)\b/g, '$1 $2');
+
+  // 12. Em-dashes and En-dashes -> natural comma pause
+  s = s.replace(/\s*[—–]\s*/g, ', ');
+
+  // 13. Parentheses, Braces, and Brackets Handling:
+  // Empty brackets/parentheses
+  s = s.replace(/\(\s*\)/g, '');
+  s = s.replace(/\[\s*\]/g, '');
+  s = s.replace(/\{\s*\}/g, '');
+
+  // Brackets and Braces: [local] -> local, {data} -> data
+  s = s.replace(/\[([^\]]+)\]/g, ' $1 ');
+  s = s.replace(/\{([^}]+)\}/g, ' $1 ');
+
+  // Specific parenthetical clauses:
+  // (running on x64 development machine) -> . The system is running on an x64 development machine
+  s = s.replace(
+    /\(\s*running on\s+(?:an?\s+)?x64\s+development\s+machine\s*\)/gi,
+    '. The system is running on an x64 development machine'
+  );
+  s = s.replace(/\(\s*running on\s+([^)]+)\)/gi, ', running on $1');
+
+  // General parentheses:
+  // If preceded by a linking verb or preposition, omit leading comma: e.g. "settings are (private)" -> "settings are private"
+  // Otherwise, convert opening parenthesis to a natural spoken pause: "(12 threads)" -> ", 12 threads"
+  const linkingWords = new Set([
+    'is', 'are', 'was', 'were', 'be', 'been', 'being',
+    'to', 'from', 'in', 'of', 'for', 'with', 'as', 'and', 'or'
+  ]);
+  s = s.replace(/(\w+)\s*\(([^)]+)\)/g, (match, pre, inner) => {
+    const trimmedInner = inner.trim();
+    const words = pre.trim().split(/\s+/);
+    const lastWord = words[words.length - 1].toLowerCase();
+    const isClauseOrMeasurement = (trimmedInner.split(/\s+/).length > 1) || /^\d+/.test(trimmedInner);
+    if (isClauseOrMeasurement && !linkingWords.has(lastWord)) {
+      return `${pre}, ${trimmedInner}`;
+    }
+    return `${pre} ${trimmedInner}`;
+  });
+  s = s.replace(/\(([^)]+)\)/g, ' $1 ');
+  // Strip any remaining stray brackets/braces/parentheses
+  s = s.replace(/[{}\[\]()]/g, ' ');
+
+  // 14. Structured Line-by-Line Formatting (Reports, Telemetry, Bullet Lists)
+  const lines = s.split('\n');
+  const processedLines = [];
+  for (const line of lines) {
+    let stripped = line.trim();
+    if (!stripped) continue;
+
+    // Detect and convert list bullets: '• item', '- item', '* item'
+    const isBullet = /^[-*•›»]\s*/.test(stripped);
+    stripped = stripped.replace(/^[-*•›»]\s*/, '').trim();
+
+    // Detect and convert numbered lists: '1. item' -> '1, item'
+    const isNumbered = /^\d+\.\s*/.test(stripped);
+    stripped = stripped.replace(/^(\d+)\.\s*/, '$1, ').trim();
+
+    // If intro / heading line ends with a colon (e.g. 'Workstation Hardware Telemetry, sir:'),
+    // convert colon to period for natural pause
+    if (stripped.endsWith(':')) {
+      stripped = stripped.slice(0, -1).trimEnd() + '.';
+    }
+
+    // Ensure bullet and numbered list items end with terminal sentence punctuation
+    // to prevent TTS engines from flattening reports into one continuous run-on sentence
+    if ((isBullet || isNumbered) && !/[.!?]$/.test(stripped)) {
+      stripped += '.';
+    }
+
+    processedLines.append ? processedLines.append(stripped) : processedLines.push(stripped);
+  }
+
+  s = processedLines.join('\n');
+
+  // 15. Remaining awkward notation / punctuation symbols
+  s = s.replace(/[~^\\<>]/g, ' ');
+  s = s.replace(/[*#_]/g, ' ');
+
+  // Normalize repeated punctuation: "!!!" -> "!", "???" -> "?", "...." -> "..."
+  s = s.replace(/!{2,}/g, '!');
+  s = s.replace(/\?{2,}/g, '?');
+  s = s.replace(/\.{4,}/g, '...');
+
+  // 16. Whitespace and comma/punctuation cleanup
+  // Snap punctuation back if there is space before it (e.g. "task ." -> "task.")
+  s = s.replace(/\s+([.,!?;:])/g, '$1');
+  s = s.replace(/,\s*,+/g, ', ');
+  s = s.replace(/\s*,\s*\./g, '.');
+  s = s.replace(/\s*\.\s*\./g, '.');
+  s = s.replace(/\s*,\s*!/g, '!');
+  s = s.replace(/\s*,\s*\?/g, '?');
+  s = s.replace(/^[\s,]+/gm, '');
+  s = s.replace(/[ \t]+/g, ' ');
+  s = s.replace(/\n\s*\n+/g, '\n');
+
+  return s.trim();
+}
+
+export function normalizeSTTTranscript(text) {
+  if (!text) return '';
+  let s = String(text);
+
+  // 1. Conservative AIGIS recognition:
+  // "A I G I S", "A-I-G-I-S", "A - I - G - I - S", "A.I.G.I.S." -> "AIGIS"
+  s = s.replace(/\bA\s*-\s*I\s*-\s*G\s*-\s*I\s*-\s*S\b/gi, 'AIGIS');
+  s = s.replace(/\bA\s+I\s+G\s+I\s+S\b/gi, 'AIGIS');
+  s = s.replace(/(?:\bA\.I\.G\.I\.S\.|\bA\.I\.G\.I\.S\b)/gi, 'AIGIS');
+
+  // Common phonetic mishearings for AIGIS brand recognition
+  s = s.replace(/\b(i\s*guess|eye\s*guess|aegis|ai\s*gis|eyegis|aygis|igh\s*guess|i\s*ges|aiges)\b/gi, 'AIGIS');
+  s = s.replace(/\b(aigis)\b/gi, 'AIGIS');
+
+  // 2. Accidental repeated whitespace cleanup
+  s = s.replace(/[ \t]+/g, ' ');
+  s = s.replace(/\s*\n\s*/g, '\n');
+
+  return s.trim();
+}
+
 function normalizeEnglishTTSText(text) {
   if (!text) return '';
   let str = text;
@@ -249,8 +436,12 @@ function normalizeEnglishTTSText(text) {
   str = str.replace(/\bC\+\+(?!\w)/g, 'C plus plus');
   str = str.replace(/π/g, 'pi');
   str = str.replace(/∞/g, 'infinity');
+  const hasX86 = /x86[-_]64/i.test(str);
+  if (hasX86) {
+    str = str.replace(/\bx86[-_]64\b/gi, '___X86_64___');
+  }
 
-  // 0. Comma-separated Large Numbers with optional Decimals (MUST run before any single-digit / decimal splitting)
+  // 0. Comma-separated Large Numbers with optional Decimals
   str = str.replace(/\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b/g, (match) => {
     if (match.includes('.')) {
       const [intPart, fracPart] = match.split('.');
@@ -261,7 +452,7 @@ function normalizeEnglishTTSText(text) {
     return numberToWords(match);
   });
 
-  // 1. Scientific Notation (MUST run before general decimals & exponents)
+  // 1. Scientific Notation
   str = str.replace(/\b(\d+(?:\.\d+)?)[eE]([+-]?\d+)\b/g, (match, base, exp) => {
     let baseText = base;
     if (base.includes('.')) {
@@ -278,7 +469,7 @@ function normalizeEnglishTTSText(text) {
     return `${baseText} times ten to the power of ${expText}`;
   });
 
-  // 2. Units of Measurement (MUST run before general decimals & division)
+  // 2. Units of Measurement
   str = str.replace(/\b(\d+(?:\.\d+)?)\s*km\/h\b/gi, (m, n) => `${n} kilometers per hour`);
   str = str.replace(/\b(\d+(?:\.\d+)?)\s*m\/s\b/gi, (m, n) => `${n} meters per second`);
   str = str.replace(/\b(\d+(?:\.\d+)?)\s*kg\b/gi, (m, n) => `${n} kilograms`);
@@ -286,14 +477,14 @@ function normalizeEnglishTTSText(text) {
   str = str.replace(/\b(\d+(?:\.\d+)?)\s*(°F|degrees?\s*F|degrees?\s*Fahrenheit)\b/gi, (m, n) => `${n} degrees Fahrenheit`);
   str = str.replace(/\b(\d+(?:\.\d+)?)\s*V\b/g, (m, n) => `${n} volts`);
 
-  // 3. Common Natural Fractions (MUST run before general division)
+  // 3. Common Natural Fractions
   str = str.replace(/\b1\/2\b/g, 'one half');
   str = str.replace(/\b1\/3\b/g, 'one third');
   str = str.replace(/\b2\/3\b/g, 'two thirds');
   str = str.replace(/\b1\/4\b/g, 'one quarter');
   str = str.replace(/\b3\/4\b/g, 'three quarters');
 
-  // 4. Decimals (BEFORE integer normalization)
+  // 4. Decimals
   str = str.replace(/\b(\d+)\.(\d+)\b/g, (match, intPart, fracPart) => {
     const intWords = numberToWords(intPart);
     const fracWords = fracPart.split('').map(d => (d === '0' ? 'zero' : ONES[parseInt(d, 10)] || d)).join(' ');
@@ -317,35 +508,30 @@ function normalizeEnglishTTSText(text) {
   str = str.replace(/←/g, 'left arrow');
   str = str.replace(/→/g, 'right arrow');
 
-  // 7. Math Operators: *, ×, /, ÷, +, -, =, %
-  str = str.replace(/(\b\w+|\d+)\s*%/g, (m, a) => `${a} percent`);
-  str = str.replace(/(\b\w+|\d+)\s*[*×]\s*(\b\w+|\d+)/g, (m, a, b) => `${a} times ${b}`);
-  str = str.replace(/(\b\w+|\d+)\s*[÷]\s*(\b\w+|\d+)/g, (m, a, b) => `${a} divided by ${b}`);
-  str = str.replace(/(\b\w+|\d+)\s*\/\s*(\b\w+|\d+)/g, (m, a, b) => `${a} divided by ${b}`);
-  str = str.replace(/(\b\w+|\d+)\s*\+\s*(\b\w+|\d+)/g, (m, a, b) => `${a} plus ${b}`);
-  str = str.replace(/(\b\w+|\d+)\s+-\s+(\b\w+|\d+)/g, (m, a, b) => `${a} minus ${b}`);
+  // 7. Math Operators: between numbers only
+  str = str.replace(/(\b\d+)\s*%/g, (m, a) => `${a} percent`);
+  str = str.replace(/(\b\d+)\s*[*×]\s*(\b\d+)/g, (m, a, b) => `${a} times ${b}`);
+  str = str.replace(/(\b\d+)\s*[÷\/]\s*(\b\d+)/g, (m, a, b) => `${a} divided by ${b}`);
+  str = str.replace(/(\b\d+)\s*\+\s*(\b\d+)/g, (m, a, b) => `${a} plus ${b}`);
   str = str.replace(/(\b\d+)\s*-\s*(\b\d+)/g, (m, a, b) => `${a} minus ${b}`);
-  str = str.replace(/(\b\w+|\d+)\s*=\s*(\b\w+|\d+)/g, (m, a, b) => `${a} equals ${b}`);
+  str = str.replace(/(\b\d+)\s*=\s*(\b\d+)/g, (m, a, b) => `${a} equals ${b}`);
 
-  // 8. Exponents / Power (^, **)
-  str = str.replace(/(\b\w+|\d+)\s*(\^|\*\*)\s*(\b\w+|\d+)/g, (m, a, op, b) => `${a} to the power of ${b}`);
+  // 8. Exponents / Power (^, **) between digits
+  str = str.replace(/(\b\d+)\s*(\^|\*\*)\s*(\b\d+)/g, (m, a, op, b) => `${a} to the power of ${b}`);
 
-  // 9. Comparisons (>=, <=, >, <)
-  str = str.replace(/(\b\w+|\d+)\s*>=\s*(\b\w+|\d+)/g, (m, a, b) => `${a} is greater than or equal to ${b}`);
-  str = str.replace(/(\b\w+|\d+)\s*<=\s*(\b\w+|\d+)/g, (m, a, b) => `${a} is less than or equal to ${b}`);
-  str = str.replace(/(\b\w+|\d+)\s*>\s*(\b\w+|\d+)/g, (m, a, b) => `${a} is greater than ${b}`);
-  str = str.replace(/(\b\w+|\d+)\s*<\s*(\b\w+|\d+)/g, (m, a, b) => `${a} is less than ${b}`);
+  // 9. Comparisons between digits
+  str = str.replace(/(\b\d+)\s*>=\s*(\b\d+)/g, (m, a, b) => `${a} is greater than or equal to ${b}`);
+  str = str.replace(/(\b\d+)\s*<=\s*(\b\d+)/g, (m, a, b) => `${a} is less than or equal to ${b}`);
+  str = str.replace(/(\b\d+)\s*>\s*(\b\d+)/g, (m, a, b) => `${a} is greater than ${b}`);
+  str = str.replace(/(\b\d+)\s*<\s*(\b\d+)/g, (m, a, b) => `${a} is less than ${b}`);
 
-  // 10. Not equals (!=, ≠)
-  str = str.replace(/(\b\w+|\d+)\s*(!=|≠)\s*(\b\w+|\d+)/g, (m, a, op, b) => `${a} is not equal to ${b}`);
+  // 10. Not equals (!=, ≠) between digits
+  str = str.replace(/(\b\d+)\s*(!=|≠)\s*(\b\d+)/g, (m, a, op, b) => `${a} is not equal to ${b}`);
 
-  // 11. Approximately equal (≈, ~=)
-  str = str.replace(/(\b\w+|\d+)\s*(≈|~=)\s*(\b\w+|\d+)/g, (m, a, op, b) => `${a} is approximately ${b}`);
+  // 11. Square Root (√)
+  str = str.replace(/√(\b\d+)/g, (m, a) => `square root of ${a}`);
 
-  // 12. Square Root (√)
-  str = str.replace(/√(\b\w+|\d+)/g, (m, a) => `square root of ${a}`);
-
-  // 13. Times: e.g. "2:05 PM", "12:30 AM", "8:15"
+  // 12. Times: e.g. "2:05 PM", "12:30 AM", "8:15"
   str = str.replace(/\b(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)?\b/g, (match, h, m, meridiem) => {
     const hourNum = parseInt(h, 10);
     const minNum = parseInt(m, 10);
@@ -362,7 +548,7 @@ function normalizeEnglishTTSText(text) {
     return `${hourStr} ${minStr}${ampmStr}`.trim();
   });
 
-  // 14. Dates: e.g. "July 28, 2026", "28th July", "July 28"
+  // 13. Dates: e.g. "July 28, 2026", "28th July", "July 28"
   str = str.replace(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|June|July|August|September|October|November|December)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s*(\d{4})?\b/gi, (match, month, day, year) => {
     const dayNum = parseInt(day, 10);
     const dayStr = ORDINALS[dayNum] || numberToWords(dayNum);
@@ -370,12 +556,12 @@ function normalizeEnglishTTSText(text) {
     return `${month} ${dayStr}${yearStr}`;
   });
 
-  // 15. Percentages: e.g. "90%", "25%"
+  // 14. Percentages: e.g. "90%", "25%"
   str = str.replace(/\b(\d+)%\b/g, (match, num) => {
     return `${numberToWords(num)} percent`;
   });
 
-  // 16. Currencies: e.g. "$50", "₹500"
+  // 15. Currencies: e.g. "$50", "₹500"
   str = str.replace(/\$(\d+)\b/g, (match, num) => {
     return `${numberToWords(num)} dollars`;
   });
@@ -383,10 +569,14 @@ function normalizeEnglishTTSText(text) {
     return `${numberToWords(num)} rupees`;
   });
 
-  // 17. Standalone digits: e.g. "8 hours", "90"
+  // 16. Standalone digits: e.g. "8 hours", "90"
   str = str.replace(/\b(\d{1,3})\b/g, (match, num) => {
     return numberToWords(num);
   });
+
+  if (hasX86) {
+    str = str.replace(/___X86_64___/g, 'x86-64');
+  }
 
   return str;
 }
@@ -402,7 +592,8 @@ function browserSpeak(text, onStart, onEnd, targetVoiceURI = null) {
 
   const settings = getVoiceSettings();
   const respLang = settings.responseLanguage || 'en';
-  const processedText = (respLang !== 'hi') ? normalizeEnglishTTSText(text) : text;
+  const sanitizedText = sanitizeSpeechText(text);
+  const processedText = (respLang !== 'hi') ? normalizeEnglishTTSText(sanitizedText) : sanitizedText;
 
   const utterance = new SpeechSynthesisUtterance(processedText);
   
@@ -481,9 +672,12 @@ export async function speak(text, onStart, onEnd, targetVoiceURI = null) {
     return;
   }
 
+  // Create dedicated speech-only representation without mutating original response
+  const speechText = sanitizeSpeechText(text);
+
   // If a specific target voice is requested for preview or playback, use browserSpeak directly
   if (targetVoiceURI && targetVoiceURI !== 'elevenlabs' && targetVoiceURI !== 'auto') {
-    browserSpeak(text, onStart, onEnd, targetVoiceURI);
+    browserSpeak(speechText, onStart, onEnd, targetVoiceURI);
     return;
   }
 
@@ -491,11 +685,11 @@ export async function speak(text, onStart, onEnd, targetVoiceURI = null) {
 
   // If user explicitly chose a browser voice, bypass ElevenLabs to use their chosen voice
   if (settings.selectedVoiceURI && settings.selectedVoiceURI !== 'elevenlabs' && settings.selectedVoiceURI !== 'auto') {
-    browserSpeak(text, onStart, onEnd);
+    browserSpeak(speechText, onStart, onEnd);
     return;
   }
 
-  const audioBlob = await elevenLabsSpeak(text);
+  const audioBlob = await elevenLabsSpeak(speechText);
 
   if (audioBlob) {
     const audioUrl = URL.createObjectURL(audioBlob);
@@ -511,7 +705,7 @@ export async function speak(text, onStart, onEnd, targetVoiceURI = null) {
     audio.onerror = () => {
       URL.revokeObjectURL(audioUrl);
       currentAudioElement = null;
-      browserSpeak(text, onStart, onEnd);
+      browserSpeak(speechText, onStart, onEnd);
     };
 
     try {
@@ -519,10 +713,10 @@ export async function speak(text, onStart, onEnd, targetVoiceURI = null) {
     } catch (playErr) {
       URL.revokeObjectURL(audioUrl);
       currentAudioElement = null;
-      browserSpeak(text, onStart, onEnd);
+      browserSpeak(speechText, onStart, onEnd);
     }
   } else {
-    browserSpeak(text, onStart, onEnd);
+    browserSpeak(speechText, onStart, onEnd);
   }
 }
 

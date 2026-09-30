@@ -6,6 +6,16 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 from .base_engine import BaseAIEngine, EngineResponse
 from .slm_pipeline import LocalSLMPipeline
+from .deterministic import (
+    parse_time_date_query,
+    build_time_date_response,
+    parse_telemetry_query,
+    build_telemetry_response
+)
+try:
+    from .prompts import get_competition_system_prompt
+except ImportError:
+    from ai_engine.engine.prompts import get_competition_system_prompt
 
 ai_engine_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ai_engine_dir not in sys.path:
@@ -50,13 +60,15 @@ class LocalEngine(BaseAIEngine):
         self,
         hardware_detector: Optional[HardwareDetector] = None,
         slm_pipeline: Optional[LocalSLMPipeline] = None,
-        desktop_action_service: Optional[DesktopActionService] = None
+        desktop_action_service: Optional[DesktopActionService] = None,
+        system_prompt: Optional[str] = None
     ):
         self.detector = hardware_detector or HardwareDetector
         self.slm_pipeline = slm_pipeline if slm_pipeline is not None else LocalSLMPipeline()
         self.desktop_action_service = desktop_action_service or DesktopActionService()
         self.action_guard = ActionSafetyGuard()
         self.action_executor = DefaultActionExecutor(self.action_guard, self.desktop_action_service)
+        self.system_prompt = system_prompt or get_competition_system_prompt()
         self._cached_capabilities = None
 
     def _get_capabilities(self) -> Dict[str, Any]:
@@ -225,42 +237,46 @@ class LocalEngine(BaseAIEngine):
         # =========================================================================
 
         # 2a. System Time & Date Queries (OS-level truth)
-        is_time = any(p in request_lowered for p in ["what time is it", "current time", "what's the time", "tell me the time"]) or request_lowered in ["time", "time now"]
-        is_date = any(p in request_lowered for p in ["what's today's date", "what is today's date", "today's date", "what day is it", "what day is today"]) or request_lowered in ["date", "today date"]
-
-        if is_time and is_date:
-            reply = f"It is {now.strftime('%I:%M %p')} on {now.strftime('%A, %B %d, %Y')}, sir."
+        is_time, is_date, is_remote_location = parse_time_date_query(user_request)
+        if is_remote_location:
             elapsed_ms = int((time.perf_counter() - start_time) * 1000)
-            return self._build_local_response(reply, provider_name, elapsed_ms, {"intent": "time_date"})
+            reply = "Current and live information for remote locations cannot be verified in Local-Only mode without network connectivity, sir."
+            return self._build_local_response(reply, "AIGIS Local Engine -> Competition Guard", elapsed_ms, {
+                "intent": "live_web",
+                "localInference": False,
+                "networkUsed": False,
+                "verified": False,
+                "remoteLocation": True
+            })
+        elif is_time and is_date:
+            reply, intent_tag = build_time_date_response(True, True, now)
+            elapsed_ms = int((time.perf_counter() - start_time) * 1000)
+            return self._build_local_response(reply, provider_name, elapsed_ms, {"intent": intent_tag, "localClock": True, "isOffline": True, "networkUsed": False})
         elif is_time:
-            reply = f"The current time is {now.strftime('%I:%M %p')}, sir."
+            reply, intent_tag = build_time_date_response(True, False, now)
             elapsed_ms = int((time.perf_counter() - start_time) * 1000)
-            return self._build_local_response(reply, provider_name, elapsed_ms, {"intent": "time"})
+            return self._build_local_response(reply, provider_name, elapsed_ms, {"intent": intent_tag, "localClock": True, "isOffline": True, "networkUsed": False})
         elif is_date:
-            reply = f"Today is {now.strftime('%A, %B %d, %Y')}, sir."
+            reply, intent_tag = build_time_date_response(False, True, now)
             elapsed_ms = int((time.perf_counter() - start_time) * 1000)
-            return self._build_local_response(reply, provider_name, elapsed_ms, {"intent": "date"})
+            return self._build_local_response(reply, provider_name, elapsed_ms, {"intent": intent_tag, "localClock": True, "isOffline": True, "networkUsed": False})
 
-        # 2b. Hardware / Accelerator Inquiries
-        hw_keywords = ["hardware", "specs", "accelerator", "npu", "cpu", "gpu", "snapdragon", "system specs", "device info"]
-        if any(kw in request_lowered for kw in hw_keywords) and any(w in request_lowered for w in ["what", "check", "show", "tell", "status", "info"]):
-            arch = caps.get("architecture", "Unknown")
-            cpu_brand = caps.get("cpu", {}).get("brand", "Unknown CPU")
-            gpu_name = caps.get("gpu", {}).get("name", "Unknown GPU")
-            npu_status = caps.get("accelerators", {}).get("snapdragonNpu", {}).get("status", "Not detected")
-            device_type = caps.get("deviceType", "Host")
-
-            reply = (
-                f"Workstation Hardware Telemetry, sir:\n"
-                f"• Device Environment: {device_type}\n"
-                f"• Architecture: {arch}\n"
-                f"• Processor: {cpu_brand} ({caps.get('cpu', {}).get('logicalCores', 0)} threads)\n"
-                f"• Physical GPU: {gpu_name}\n"
-                f"• Snapdragon NPU Status: {npu_status}\n"
-                f"• Active AI Execution Runtime: {accelerator_label}"
+        # 2b. Deterministic Hardware Telemetry & Accelerator Inquiries
+        if parse_telemetry_query(user_request):
+            telemetry_data = self.detector.get_system_telemetry(accelerator_label)
+            reply, intent_tag = build_telemetry_response(caps, accelerator_label, user_request, telemetry_data)
+            elapsed_ms = int((time.perf_counter() - start_time) * 1000)
+            return self._build_local_response(
+                reply,
+                provider_name,
+                elapsed_ms,
+                {
+                    "intent": intent_tag,
+                    "networkUsed": False,
+                    "localTelemetry": True,
+                    "telemetry": telemetry_data
+                }
             )
-            elapsed_ms = int((time.perf_counter() - start_time) * 1000)
-            return self._build_local_response(reply, provider_name, elapsed_ms, {"intent": "hardware_telemetry"})
 
         # 2c. Privacy & Processing Location Inquiries
         if any(kw in request_lowered for kw in ["where are you running", "is this local", "are you local", "is my data private", "privacy mode"]):
@@ -325,7 +341,11 @@ class LocalEngine(BaseAIEngine):
         # PRIORITY 3: Genuine Local SLM Neural Generation (General AI)
         # =========================================================================
         if self.slm_pipeline and self.slm_pipeline.is_available():
-            reply_text, token_count, latency_ms, tokens_per_sec, meta = self.slm_pipeline.generate(prompt)
+            active_sys_prompt = kwargs.get("system_prompt") or self.system_prompt
+            reply_text, token_count, latency_ms, tokens_per_sec, meta = self.slm_pipeline.generate(
+                prompt,
+                system_prompt=active_sys_prompt
+            )
             slm_provider = f"AIGIS Local Engine -> {self.slm_pipeline.model_name} ({accelerator_label})"
             return self._build_local_response(
                 reply=reply_text,

@@ -15,6 +15,11 @@ try:
 except ImportError:
     FASTER_WHISPER_AVAILABLE = False
 
+try:
+    from .speech_sanitizer import normalize_stt_transcript
+except ImportError:
+    from ai_engine.engine.speech_sanitizer import normalize_stt_transcript
+
 
 class LocalSTTService:
     """
@@ -185,7 +190,8 @@ class LocalSTTService:
             audio_duration = round(getattr(info, "duration", 0.0) or 0.0, 3)
             rtf = round(transcription_sec / audio_duration, 3) if audio_duration > 0 else 0.0
 
-            transcript = " ".join(s.text for s in seg_list).strip()
+            raw_transcript = " ".join(s.text for s in seg_list).strip()
+            transcript = normalize_stt_transcript(raw_transcript)
 
             return {
                 "transcript": transcript,

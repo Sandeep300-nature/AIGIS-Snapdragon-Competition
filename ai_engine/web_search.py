@@ -216,7 +216,12 @@ def check_open_website_shortcut(text: str) -> Optional[str]:
     ).strip()
     cleaned_app = re.sub(r'[^a-zA-Z0-9\s]', '', cleaned_app).strip()
 
-    if not cleaned_app or cleaned_app in ["search", "google", "website", "app", "page", "browser"]:
+    system_query_words = {"hardware", "telemetry", "status", "specs", "specifications", "system", "cpu", "gpu", "npu", "time", "date", "clock", "architecture"}
+    if (
+        not cleaned_app
+        or cleaned_app in ["search", "google", "website", "app", "page", "browser"]
+        or any(w in cleaned_app.split() for w in system_query_words)
+    ):
         return None
 
     # --- Tier 2: Real-Time Official Website Resolver via Tavily Search API ---
@@ -389,7 +394,13 @@ TIME_SENSITIVE_KEYWORDS = [
 
 def is_time_sensitive_query(query: str) -> bool:
     lowered = query.lower().strip()
+    # Guard conceptual questions regarding hardware temperatures or telemetry
+    if bool(re.search(r'\b(?:explain|definition|meaning|what\s+is|how\s+does)\b', lowered)):
+        if "gpu temperature" in lowered or "cpu temperature" in lowered or "system telemetry" in lowered or "telemetry" in lowered:
+            return False
     if any(re.search(r'\b' + re.escape(kw) + r'\b', lowered) for kw in TIME_SENSITIVE_KEYWORDS):
+        if "temperature" in lowered and ("gpu" in lowered or "cpu" in lowered or "hardware" in lowered) and bool(re.search(r'\b(?:explain|definition|meaning|what\s+is|concept)\b', lowered)):
+            return False
         return True
     return any(kw in lowered for kw in ["us30", "btc", "eur/usd", "price", "quote", "weather", "news"])
 

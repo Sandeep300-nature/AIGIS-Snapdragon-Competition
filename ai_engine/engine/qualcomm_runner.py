@@ -43,10 +43,11 @@ class QualcommModelRunner:
         "part4_of_4.bin"
     ]
 
+    cached_geniex_bundle = os.path.expanduser(r"~/.cache/geniex/models/qualcomm/Qwen3-4B-Instruct-2507")
     DEFAULT_MODEL_DIR = (
         os.getenv("AIGIS_GENIE_MODEL_DIR")
         or os.getenv("AIGIS_SNAPDRAGON_MODEL_DIR")
-        or r"D:\AIGIS-Snapdragon-Models\qwen3_4b_instruct_2507-geniex_qairt-w4a16-qualcomm_snapdragon_x_elite"
+        or (cached_geniex_bundle if os.path.isdir(cached_geniex_bundle) else r"D:\AIGIS-Snapdragon-Models\qwen3_4b_instruct_2507-geniex_qairt-w4a16-qualcomm_snapdragon_x_elite")
     )
 
     def __init__(
@@ -55,22 +56,27 @@ class QualcommModelRunner:
         model_id: str = "qwen3_4b_instruct_2507",
         checkpoint: str = "DEFAULT_W4A16",
         hardware_detector: Optional[Any] = None,
-        runtime_adapter: Optional[GenieRuntimeAdapter] = None
+        runtime_adapter: Optional[GenieRuntimeAdapter] = None,
+        system_prompt: Optional[str] = None
     ):
+        cached_geniex_bundle = os.path.normpath(os.path.expanduser(r"~/.cache/geniex/models/qualcomm/Qwen3-4B-Instruct-2507"))
+        default_dir = cached_geniex_bundle if os.path.isdir(cached_geniex_bundle) else self.DEFAULT_MODEL_DIR
         self.model_dir = (
             model_dir
             or os.getenv("AIGIS_GENIE_MODEL_DIR")
             or os.getenv("AIGIS_SNAPDRAGON_MODEL_DIR")
-            or self.DEFAULT_MODEL_DIR
+            or default_dir
         )
         self.model_id = model_id
         self.checkpoint = checkpoint
         self.detector = hardware_detector or HardwareDetector
         self.runtime_adapter = runtime_adapter or GenieRuntimeAdapter()
+        self.system_prompt = system_prompt
         self.provider = GenieQwenProvider(
             model_dir=self.model_dir,
             hardware_detector=self.detector,
-            runtime_adapter=self.runtime_adapter
+            runtime_adapter=self.runtime_adapter,
+            system_prompt=self.system_prompt
         )
         self.provider.model_id = self.model_id
         self.provider.checkpoint = self.checkpoint

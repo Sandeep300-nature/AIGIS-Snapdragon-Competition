@@ -3,6 +3,8 @@ import sys
 import time
 import shutil
 import subprocess
+import tempfile
+import re
 from enum import Enum
 from typing import Dict, Any, Optional, List, Tuple, Union
 from pydantic import BaseModel, Field
@@ -15,6 +17,11 @@ try:
     from hardware.detector import HardwareDetector
 except ImportError:
     from ai_engine.hardware.detector import HardwareDetector
+
+try:
+    from .prompts import AIGIS_COMPETITION_SYSTEM_PROMPT, get_competition_system_prompt
+except ImportError:
+    from ai_engine.engine.prompts import AIGIS_COMPETITION_SYSTEM_PROMPT, get_competition_system_prompt
 
 
 class SnapdragonRuntimeState(str, Enum):
@@ -68,6 +75,8 @@ class GenieRuntimeAdapter:
     """
 
     SUPPORTED_EXECUTABLES = [
+        "geniex.exe",
+        "geniex",
         "genie-t2t-run.exe",
         "genie-t2t-run",
         "geniex-bench.exe",
@@ -97,6 +106,14 @@ class GenieRuntimeAdapter:
             search_dirs.append(self.custom_runtime_dir)
             search_dirs.append(os.path.join(self.custom_runtime_dir, "bin"))
             search_dirs.append(os.path.join(self.custom_runtime_dir, "lib"))
+
+        # Check standard Windows GenieX installation directory
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if local_app_data:
+            geniex_cli_dir = os.path.join(local_app_data, "GenieX CLI")
+            if os.path.isdir(geniex_cli_dir):
+                search_dirs.append(geniex_cli_dir)
+                search_dirs.append(os.path.join(geniex_cli_dir, "qairt", "htp-files"))
 
         # Find executable
         for exe in self.SUPPORTED_EXECUTABLES:
@@ -137,15 +154,36 @@ class GenieRuntimeAdapter:
     def libraries_found(self) -> List[str]:
         return list(self._library_paths.keys())
 
+    def get_version(self) -> Optional[str]:
+        """Returns detected Genie / GenieX version string."""
+        if not self._executable_path:
+            return None
+        try:
+            res = subprocess.run(
+                [self._executable_path, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5.0,
+                check=False
+            )
+            out = res.stdout.strip() or res.stderr.strip()
+            return out if out else None
+        except Exception:
+            return None
+
     def execute_dialog(
         self,
         config_path: str,
         formatted_prompt: str,
         max_tokens: int = 512,
-        timeout_s: float = 60.0
+        timeout_s: float = 60.0,
+        model_dir: Optional[str] = None,
+        model_id: Optional[str] = None
     ) -> Tuple[Optional[str], int, int, Dict[str, Any]]:
         """
         Executes genuine Genie text generation via verified on-device CLI/binary.
+        Supports both geniex.exe (v0.7.0) via non-interactive --input file contract,
+        and legacy genie-t2t-run.exe via --config/--prompt flags.
         Returns: (reply_text, token_count, latency_ms, telemetry_metadata)
         
         Zero fabrication: If runtime is not present, returns None. Never produces fake output.
@@ -158,47 +196,144 @@ class GenieRuntimeAdapter:
             }
 
         t0 = time.perf_counter()
-        try:
-            cmd = [
-                self._executable_path,
-                "--config", config_path,
-                "--prompt", formatted_prompt,
-                "--max-output-tokens", str(max_tokens)
-            ]
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout_s,
-                check=False
-            )
-            elapsed_ms = int((time.perf_counter() - t0) * 1000)
+        exe_basename = os.path.basename(self._executable_path).lower()
 
-            if proc.returncode != 0:
-                return None, 0, elapsed_ms, {
-                    "error": f"Genie process exited with return code {proc.returncode}: {proc.stderr.strip()}",
+        # Check if using the official GenieX CLI (geniex.exe / geniex)
+        if exe_basename.startswith("geniex") and not exe_basename.startswith("geniex-bench"):
+            temp_prompt_path = None
+            try:
+                # Use non-interactive --input file contract to bypass interactive readline console requirement
+                with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False, suffix=".txt") as temp_file:
+                    temp_file.write(formatted_prompt)
+                    temp_prompt_path = temp_file.name
+
+                target_model = model_id or "ai-hub-models/Qwen3-4B-Instruct-2507"
+                if target_model in ["qwen3_4b_instruct_2507", "qwen3-4b-instruct"]:
+                    target_model = "ai-hub-models/Qwen3-4B-Instruct-2507"
+
+                cmd = [
+                    self._executable_path,
+                    "infer",
+                    target_model,
+                    "--compute", "npu",
+                    "--input", temp_prompt_path,
+                    "--max-tokens", str(max_tokens),
+                    "--skip-update"
+                ]
+
+                proc = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=timeout_s,
+                    check=False
+                )
+                elapsed_ms = int((time.perf_counter() - t0) * 1000)
+
+                if proc.returncode != 0:
+                    err_msg = (proc.stderr or "").strip()
+                    return None, 0, elapsed_ms, {
+                        "error": f"GenieX process exited with return code {proc.returncode}: {err_msg}",
+                        "hardware_valid": True,
+                        "simulated": False
+                    }
+
+                stdout_text = (proc.stdout or "").strip()
+                reply_text = stdout_text
+                if "encoding..." in reply_text:
+                    reply_text = reply_text.split("encoding...", 1)[1]
+
+                # Parse metrics trailer: e.g. "— 21.7 tok/s • 44 tok • 0.1 s first token —"
+                metrics_match = re.search(
+                    r'—\s*([\d.]+)\s*tok/s\s*•\s*(\d+)\s*tok\s*•\s*([\d.]+)\s*s\s*first token\s*—',
+                    reply_text
+                )
+                tps = None
+                token_count = 0
+                ttft_s = None
+                if metrics_match:
+                    tps = float(metrics_match.group(1))
+                    token_count = int(metrics_match.group(2))
+                    ttft_s = float(metrics_match.group(3))
+                    reply_text = reply_text[:metrics_match.start()]
+
+                if "<think>" in reply_text and "</think>" in reply_text:
+                    reply_text = re.sub(r'<think>.*?</think>', '', reply_text, flags=re.DOTALL)
+                reply_text = reply_text.strip()
+                if not token_count:
+                    token_count = max(1, len(reply_text.split()))
+
+                meta = {
                     "hardware_valid": True,
+                    "simulated": False,
+                    "target": "Qualcomm Hexagon NPU",
+                    "runtime": "GenieX-QAIRT",
+                    "backend": "QnnHtp"
+                }
+                if tps is not None:
+                    meta["decode_tok_per_sec"] = tps
+                if ttft_s is not None:
+                    meta["ttft_sec"] = ttft_s
+                return reply_text, token_count, elapsed_ms, meta
+
+            except Exception as e:
+                elapsed_ms = int((time.perf_counter() - t0) * 1000)
+                return None, 0, elapsed_ms, {
+                    "error": f"GenieX execution failure: {str(e)}",
+                    "hardware_valid": False,
                     "simulated": False
                 }
+            finally:
+                if temp_prompt_path and os.path.exists(temp_prompt_path):
+                    try:
+                        os.remove(temp_prompt_path)
+                    except Exception:
+                        pass
+        else:
+            # Legacy genie-t2t-run.exe / geniex-bench.exe contract
+            try:
+                cmd = [
+                    self._executable_path,
+                    "--config", config_path,
+                    "--prompt", formatted_prompt,
+                    "--max-output-tokens", str(max_tokens)
+                ]
+                proc = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=timeout_s,
+                    check=False
+                )
+                elapsed_ms = int((time.perf_counter() - t0) * 1000)
 
-            stdout_text = proc.stdout.strip()
-            # Approximation of token count based on output length if exact metric is absent
-            token_count = max(1, len(stdout_text.split()))
+                if proc.returncode != 0:
+                    err_msg = (proc.stderr or "").strip()
+                    return None, 0, elapsed_ms, {
+                        "error": f"Genie process exited with return code {proc.returncode}: {err_msg}",
+                        "hardware_valid": True,
+                        "simulated": False
+                    }
 
-            return stdout_text, token_count, elapsed_ms, {
-                "hardware_valid": True,
-                "simulated": False,
-                "target": "Qualcomm Hexagon NPU",
-                "runtime": "GenieX-QAIRT",
-                "backend": "QnnHtp"
-            }
-        except Exception as e:
-            elapsed_ms = int((time.perf_counter() - t0) * 1000)
-            return None, 0, elapsed_ms, {
-                "error": f"Genie execution failure: {str(e)}",
-                "hardware_valid": False,
-                "simulated": False
-            }
+                stdout_text = (proc.stdout or "").strip()
+                token_count = max(1, len(stdout_text.split()))
+
+                return stdout_text, token_count, elapsed_ms, {
+                    "hardware_valid": True,
+                    "simulated": False,
+                    "target": "Qualcomm Hexagon NPU",
+                    "runtime": "GenieX-QAIRT",
+                    "backend": "QnnHtp"
+                }
+            except Exception as e:
+                elapsed_ms = int((time.perf_counter() - t0) * 1000)
+                return None, 0, elapsed_ms, {
+                    "error": f"Genie execution failure: {str(e)}",
+                    "hardware_valid": False,
+                    "simulated": False
+                }
 
 
 class GenieQwenProvider:
@@ -216,7 +351,7 @@ class GenieQwenProvider:
     """
 
     DEFAULT_MODEL_DIR = r"D:\AIGIS-Snapdragon-Models\qwen3_4b_instruct_2507-geniex_qairt-w4a16-qualcomm_snapdragon_x_elite"
-    DEFAULT_SYSTEM_PROMPT = "You are AIGIS, an autonomous on-device personal AI assistant powered by Qualcomm Snapdragon."
+    DEFAULT_SYSTEM_PROMPT = AIGIS_COMPETITION_SYSTEM_PROMPT
 
     EXPECTED_BUNDLE_FILES = [
         "genie_config.json",
@@ -235,19 +370,28 @@ class GenieQwenProvider:
         self,
         model_dir: Optional[str] = None,
         hardware_detector: Optional[Any] = None,
-        runtime_adapter: Optional[GenieRuntimeAdapter] = None
+        runtime_adapter: Optional[GenieRuntimeAdapter] = None,
+        system_prompt: Optional[str] = None
     ):
         # Configurable model directory via environment variables with fallback
+        candidate_dirs = [
+            os.path.normpath(os.path.expanduser(r"~/.cache/geniex/models/qualcomm/Qwen3-4B-Instruct-2507")),
+            os.path.normpath(os.path.expanduser(r"~/.cache/geniex/models/ai-hub-models/Qwen3-4B-Instruct-2507")),
+            os.path.normpath(os.path.expanduser(r"~/.cache/geniex/models/Qwen3-4B-Instruct-2507")),
+            self.DEFAULT_MODEL_DIR
+        ]
+        discovered_dir = next((d for d in candidate_dirs if os.path.isdir(d)), candidate_dirs[0])
         self.model_dir = (
             model_dir
             or os.getenv("AIGIS_GENIE_MODEL_DIR")
             or os.getenv("AIGIS_SNAPDRAGON_MODEL_DIR")
-            or self.DEFAULT_MODEL_DIR
+            or discovered_dir
         )
         self.model_id = "qwen3_4b_instruct_2507"
         self.checkpoint = "DEFAULT_W4A16"
         self.detector = hardware_detector or HardwareDetector
         self.runtime_adapter = runtime_adapter or GenieRuntimeAdapter()
+        self.system_prompt = system_prompt or get_competition_system_prompt()
         self._last_state = SnapdragonRuntimeState.HARDWARE_UNAVAILABLE
 
     def inspect_model_bundle(self) -> Tuple[bool, List[str]]:
@@ -261,6 +405,9 @@ class GenieQwenProvider:
         existing_files = set(os.listdir(self.model_dir))
         missing = [f for f in self.EXPECTED_BUNDLE_FILES if f not in existing_files]
         bundle_present = (len(missing) == 0)
+        if not bundle_present and any(f.endswith(".bin") for f in existing_files) and any(f.endswith(".json") for f in existing_files):
+            bundle_present = True
+            missing = []
         return bundle_present, missing
 
     def inspect_capabilities(self) -> SnapdragonCapabilityReport:
@@ -290,11 +437,22 @@ class GenieQwenProvider:
                 found_dlls.append(dll)
             elif qnn_sdk_root and os.path.isfile(os.path.join(qnn_sdk_root, "lib", "arm64", dll)):
                 found_dlls.append(dll)
+            elif hasattr(self.runtime_adapter, "libraries_found") and isinstance(self.runtime_adapter.libraries_found, list) and dll in self.runtime_adapter.libraries_found:
+                found_dlls.append(dll)
+            elif (
+                getattr(self.runtime_adapter, "executable_path", None)
+                and isinstance(self.runtime_adapter.executable_path, str)
+                and os.path.basename(self.runtime_adapter.executable_path).lower().startswith("geniex")
+            ):
+                # GenieX CLI package includes bundled QAIRT runtime
+                found_dlls.append(dll)
             else:
                 missing_dlls.append(dll)
 
-        qairt_runtime_available = len(found_dlls) >= len(self.REQUIRED_RUNTIME_DLLS)
-        genie_runtime_available = self.runtime_adapter.is_runtime_present
+        qairt_runtime_available = len(found_dlls) >= len(self.REQUIRED_RUNTIME_DLLS) or (
+            self.runtime_adapter.is_runtime_present and is_arm64 and is_snapdragon_cpu
+        )
+        genie_runtime_available = bool(self.runtime_adapter.is_runtime_present)
 
         # Inspect local model bundle
         bundle_present, missing_bundle_files = self.inspect_model_bundle()
@@ -362,7 +520,7 @@ class GenieQwenProvider:
         {user_message}<|im_end|>
         <|im_start|>assistant
         """
-        sys_p = system_prompt or self.DEFAULT_SYSTEM_PROMPT
+        sys_p = system_prompt or getattr(self, "system_prompt", None) or self.DEFAULT_SYSTEM_PROMPT
         formatted = f"<|im_start|>system\n{sys_p}<|im_end|>\n"
 
         if isinstance(messages_or_prompt, str):
@@ -407,7 +565,9 @@ class GenieQwenProvider:
         reply, tokens, latency, meta = self.runtime_adapter.execute_dialog(
             config_path=config_path,
             formatted_prompt=formatted_prompt,
-            max_tokens=max_tokens
+            max_tokens=max_tokens,
+            model_dir=self.model_dir,
+            model_id=self.model_id
         )
         if reply is not None:
             self._last_state = SnapdragonRuntimeState.INFERENCE_SUCCESSFUL

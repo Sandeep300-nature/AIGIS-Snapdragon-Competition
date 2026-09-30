@@ -396,6 +396,31 @@
   box-shadow: 0 0 15px rgba(0, 255, 225, 0.35);
 }
 
+/* Competition Version Build Label (Unobtrusive version/build label) */
+.brand-competition-label {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 10px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  color: #7ee8fa;
+  letter-spacing: 0.8px;
+  user-select: none;
+  opacity: 0.85;
+  transition: all 0.2s ease;
+}
+
+.brand-competition-label:hover {
+  opacity: 1;
+  border-color: rgba(0, 240, 255, 0.4);
+  background: rgba(0, 240, 255, 0.08);
+}
+
 .badge-pulse-dot {
   width: 6px;
   height: 6px;

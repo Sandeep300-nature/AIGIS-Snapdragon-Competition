@@ -11,7 +11,8 @@ import {
   getVoiceSettings,
   saveVoiceSettings,
   getResponseLanguage,
-  resetElevenLabs
+  resetElevenLabs,
+  normalizeSTTTranscript
 } from './utils/speechService';
 
 export default function TerminalHUD({ 
@@ -237,12 +238,10 @@ export default function TerminalHUD({
     onToggleMic();
   };
 
-  // Real-time Phonetic Post-Processing for AIGIS brand recognition
+  // Real-time Conservative STT Normalization for AIGIS brand recognition
   const processTranscriptText = (text) => {
     if (!text) return '';
-    return text
-      .replace(/\b(i\s*guess|eye\s*guess|aegis|ai\s*gis|eyegis|aygis|a\s*i\s*g\s*i\s*s|igh\s*guess|i\s*ges|aiges)\b/gi, 'AIGIS')
-      .replace(/\b(aigis)\b/gi, 'AIGIS');
+    return normalizeSTTTranscript(text);
   };
 
   const toggleLanguage = (e) => {

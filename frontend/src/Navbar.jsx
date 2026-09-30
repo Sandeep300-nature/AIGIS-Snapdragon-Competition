@@ -51,6 +51,9 @@ export default function Navbar({
             <span className="badge-pulse-dot"></span>
             ON-DEVICE AI · SNAPDRAGON TARGET
           </span>
+          <span className="brand-competition-label" title="Snapdragon Competition Version">
+            (Snapdragon Competition v_3)
+          </span>
         </div>
 
         <div className="nav-links">

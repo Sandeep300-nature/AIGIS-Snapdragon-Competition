@@ -6,6 +6,12 @@ from .base_engine import BaseAIEngine, EngineResponse
 from .local_engine import LocalEngine
 from .cloud_engine import CloudEngine
 from .snapdragon_engine import SnapdragonNPUEngine, HardwareNotSupportedError
+from .deterministic import (
+    parse_time_date_query,
+    build_time_date_response,
+    parse_telemetry_query,
+    build_telemetry_response
+)
 
 # Compatibility aliases
 SmolLM2Engine = LocalEngine
@@ -174,7 +180,38 @@ class IntentTaskRouter:
         """Classifies prompt into ACTION, SYSTEM_INFO, MEMORY_QUERY, DOCUMENT_QUERY, PRIVATE_PROJECT_QUERY, LIVE_WEB, or GENERAL_AI."""
         lowered = prompt.strip().lower()
 
-        # 1. Executable Actions (Desktop app launcher, system controls, URL navigation, safety boundary checks)
+        # 1. Deterministic Local System Time, Date, and Hardware Telemetry Queries (Priority 0)
+        # Prevents queries like "Show me my hardware status" or "Show me the time" from being hijacked into website shortcuts.
+        is_time, is_date, is_remote_location = parse_time_date_query(prompt)
+        if is_remote_location:
+            return {
+                "intent": "LIVE_WEB",
+                "privacyIntent": "PUBLIC",
+                "preferredEngine": "local" if self.competition_mode else "live_web",
+                "searchQuery": prompt,
+                "reason": "Remote timezone and location inquiries require live world clock lookup; held local in Competition Mode."
+            }
+
+        if is_time or is_date:
+            info_type = "time_date" if (is_time and is_date) else ("time" if is_time else "date")
+            return {
+                "intent": "SYSTEM_INFO",
+                "systemInfoType": info_type,
+                "privacyIntent": "PUBLIC",
+                "preferredEngine": "local",
+                "reason": "Deterministic local operating system clock and date resolved on-device."
+            }
+
+        if parse_telemetry_query(prompt):
+            return {
+                "intent": "SYSTEM_INFO",
+                "systemInfoType": "telemetry",
+                "privacyIntent": "PUBLIC",
+                "preferredEngine": "local",
+                "reason": "Deterministic hardware telemetry and system status resolved on-device."
+            }
+
+        # 2. Executable Actions (Desktop app launcher, system controls, URL navigation, safety boundary checks)
         is_desktop_action = any(kw in lowered for kw in [
             "open notepad", "open calc", "open code", "open terminal",
             "volume up", "volume down", "mute", "lock screen"
@@ -194,20 +231,18 @@ class IntentTaskRouter:
                 "reason": "Desktop and web navigation actions must execute on-device."
             }
 
-        # 2. Deterministic System Information & Assistant Identity/Capabilities
-        is_system_info = any(kw in lowered for kw in [
-            "time", "date", "clock", "what time", "current time",
-            "hardware", "specs", "specifications", "npu", "cpu", "gpu", "ram", "memory",
-            "snapdragon", "telemetry", "system status",
-            "where are you running", "is this local", "are you local",
-            "who are you", "what are you", "what is aigis", "what can you do", "capabilities", "tell me about yourself"
-        ])
-        if is_system_info:
+        # 2c. Privacy & Location Inquiries
+        is_privacy_query = any(kw in lowered for kw in ["where are you running", "is this local", "are you local", "is my data private", "privacy mode"])
+
+        # 2d. Identity & Assistant Capabilities
+        is_identity_query = any(kw in lowered for kw in ["who are you", "what are you", "what is aigis", "what can you do", "capabilities", "tell me about yourself"])
+
+        if is_privacy_query or is_identity_query:
             return {
                 "intent": "SYSTEM_INFO",
                 "privacyIntent": "PUBLIC",
                 "preferredEngine": "local",
-                "reason": "Deterministic system clock, hardware telemetry, or assistant identity/capabilities handled locally."
+                "reason": "Deterministic assistant identity/capabilities or privacy inquiry handled locally."
             }
 
         # 2b. Private Memory Queries -> Strictly On-Device Local
@@ -307,7 +342,34 @@ class IntentTaskRouter:
         privacy_intent = classification.get("privacyIntent", "PUBLIC")
 
         # =========================================================================
-        # 0. PRIVATE INTENTS (MEMORY_QUERY, DOCUMENT_QUERY, PRIVATE_PROJECT_QUERY)
+        # 0. DETERMINISTIC SYSTEM INFORMATION & OS CLOCK (TIER 1 ARCHITECTURE)
+        # Live local operating system queries bypass all LLMs completely.
+        # Resolves via local OS clock, date, and hardware telemetry.
+        # =========================================================================
+        if intent == "SYSTEM_INFO":
+            resp = self.local_engine.generate_response(
+                prompt=prompt,
+                session_id=session_id,
+                response_language=response_language,
+                raw_user_prompt=prompt,
+                **kwargs
+            )
+            routing_mode = "competition_local_deterministic" if self.competition_mode else (
+                "enforced_local" if normalized_mode == "local" else "auto_local"
+            )
+            resp.metadata["routingMode"] = routing_mode
+            resp.metadata["routingReason"] = classification.get("reason", "Deterministic local system query resolved on-device.")
+            resp.metadata["privacyMode"] = privacy_mode
+            resp.metadata["networkUsed"] = False
+            resp.metadata["isOffline"] = True
+            resp.metadata["privateContextUsed"] = False
+            resp.metadata["privacyIntent"] = privacy_intent
+            if self.competition_mode:
+                resp.metadata["competitionMode"] = True
+            return resp
+
+        # =========================================================================
+        # 0b. PRIVATE INTENTS (MEMORY_QUERY, DOCUMENT_QUERY, PRIVATE_PROJECT_QUERY)
         # Strictly routed to on-device local engine; zero network or cloud usage.
         # =========================================================================
         if intent in ["MEMORY_QUERY", "DOCUMENT_QUERY", "PRIVATE_PROJECT_QUERY"]:
@@ -318,7 +380,8 @@ class IntentTaskRouter:
             if doc_context and doc_context.strip():
                 context_blocks.append(doc_context.strip())
 
-            augmented_prompt = f"{'\n\n'.join(context_blocks)}\n\nUser Request: {prompt}" if context_blocks else prompt
+            joined_blocks = "\n\n".join(context_blocks)
+            augmented_prompt = f"{joined_blocks}\n\nUser Request: {prompt}" if context_blocks else prompt
             resp = active_engine.generate_response(
                 prompt=augmented_prompt,
                 session_id=session_id,
@@ -369,7 +432,8 @@ class IntentTaskRouter:
                 context_blocks.append(memory_context.strip())
             if doc_context and doc_context.strip():
                 context_blocks.append(doc_context.strip())
-            augmented_prompt = f"{'\n\n'.join(context_blocks)}\n\nUser Request: {prompt}" if context_blocks else prompt
+            joined_blocks = "\n\n".join(context_blocks)
+            augmented_prompt = f"{joined_blocks}\n\nUser Request: {prompt}" if context_blocks else prompt
 
             resp = active_engine.generate_response(
                 prompt=augmented_prompt,
@@ -399,7 +463,8 @@ class IntentTaskRouter:
             cloud_prompt = prompt
             if safe_mem or safe_doc:
                 prefix_parts = [p for p in (safe_mem, safe_doc) if p]
-                cloud_prompt = f"{'\n\n'.join(prefix_parts)}\n\nUser Request: {prompt}"
+                prefix_str = "\n\n".join(prefix_parts)
+                cloud_prompt = f"{prefix_str}\n\nUser Request: {prompt}"
 
             if intent == "LIVE_WEB":
                 search_q = classification.get("searchQuery", prompt)
@@ -547,7 +612,8 @@ class IntentTaskRouter:
                     cloud_prompt = prompt
                     if safe_mem or safe_doc:
                         prefix_parts = [p for p in (safe_mem, safe_doc) if p]
-                        cloud_prompt = f"{'\n\n'.join(prefix_parts)}\n\nUser Request: {prompt}"
+                        prefix_str = "\n\n".join(prefix_parts)
+                        cloud_prompt = f"{prefix_str}\n\nUser Request: {prompt}"
 
                     resp = self.cloud_engine.generate_response(
                         prompt=cloud_prompt,
@@ -569,7 +635,8 @@ class IntentTaskRouter:
                         context_blocks.append(memory_context.strip())
                     if doc_context and doc_context.strip():
                         context_blocks.append(doc_context.strip())
-                    local_prompt = f"{'\n\n'.join(context_blocks)}\n\nUser Request: {prompt}" if context_blocks else prompt
+                    joined_blocks = "\n\n".join(context_blocks)
+                    local_prompt = f"{joined_blocks}\n\nUser Request: {prompt}" if context_blocks else prompt
 
                     resp = active_engine.generate_response(
                         prompt=local_prompt,

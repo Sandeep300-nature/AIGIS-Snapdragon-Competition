@@ -21,6 +21,21 @@ from .qualcomm_runner import (
     SnapdragonCapabilityReport
 )
 
+from .prompts import (
+    AIGIS_COMPETITION_SYSTEM_PROMPT,
+    get_competition_system_prompt
+)
+from .speech_sanitizer import (
+    sanitize_speech_text,
+    normalize_stt_transcript
+)
+from .deterministic import (
+    parse_time_date_query,
+    build_time_date_response,
+    parse_telemetry_query,
+    build_telemetry_response
+)
+
 # Compatibility aliases
 SmolLM2Engine = LocalEngine
 GroqEngine = CloudEngine
@@ -41,6 +56,12 @@ __all__ = [
     "SnapdragonCapabilityReport",
     "IntentTaskRouter",
     "LocalSLMPipeline",
-    "LocalSTTService"
+    "LocalSTTService",
+    "AIGIS_COMPETITION_SYSTEM_PROMPT",
+    "get_competition_system_prompt",
+    "sanitize_speech_text",
+    "normalize_stt_transcript",
+    "parse_time_date_query",
+    "build_time_date_response"
 ]
 

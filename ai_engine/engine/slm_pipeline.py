@@ -9,6 +9,11 @@ try:
 except ImportError:
     TRANSFORMERS_AVAILABLE = False
 
+try:
+    from .prompts import get_competition_system_prompt
+except ImportError:
+    from ai_engine.engine.prompts import get_competition_system_prompt
+
 
 class LocalSLMPipeline:
     """
@@ -94,14 +99,7 @@ class LocalSLMPipeline:
                 {"error": err, "available": False, "networkUsed": False}
             )
 
-        sys_msg = system_prompt or (
-            "You are AIGIS, the user's personal AI assistant running on this computer. "
-            "AIGIS refers to you, the assistant. When the user addresses AIGIS, interpret it as addressing yourself. "
-            "Your actual verified capabilities are: local on-device AI inference via SmolLM2, deterministic system time and hardware telemetry, "
-            "launching desktop applications, web navigation, real-time web search via Tavily and Google News RSS, and cloud AI synthesis via Groq when configured. "
-            "Describe only capabilities that are actually available in the current AIGIS system. Do not invent capabilities. "
-            "Keep answers concise, direct, helpful, and polite. Address the user as sir."
-        )
+        sys_msg = system_prompt or get_competition_system_prompt()
 
         messages = [
             {"role": "system", "content": sys_msg},

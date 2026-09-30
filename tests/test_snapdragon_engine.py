@@ -22,6 +22,7 @@ from ai_engine.snapdragon_engine import (
     SnapdragonCapabilityReport
 )
 from ai_engine.engine.genie_provider import GenieQwenProvider, GenieRuntimeAdapter
+from ai_engine.engine.prompts import AIGIS_COMPETITION_SYSTEM_PROMPT, get_competition_system_prompt
 from ai_engine.engine.base_engine import BaseAIEngine, EngineResponse
 from ai_engine.engine.local_engine import LocalEngine
 from ai_engine.engine.cloud_engine import CloudEngine
@@ -371,6 +372,345 @@ class TestSnapdragonEngineSuite(unittest.TestCase):
         self.assertFalse(meta.get("simulated", True))
         self.assertIn("not installed", meta.get("error", ""))
 
+    def test_21_geniex_cli_discovery_and_version(self):
+        """21. Verifies GenieRuntimeAdapter discovers geniex.exe and extracts version."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            fake_geniex = os.path.join(tmp_dir, "geniex.exe")
+            with open(fake_geniex, "w") as f:
+                f.write("echo off\n")
+
+            with patch.dict(os.environ, {"PATH": tmp_dir}):
+                adapter = GenieRuntimeAdapter()
+                self.assertTrue(adapter.is_runtime_present)
+                self.assertEqual(adapter.executable_path, fake_geniex)
+
+                with patch("subprocess.run") as mock_run:
+                    mock_run.return_value = MagicMock(returncode=0, stdout="geniex 0.7.0\n", stderr="")
+                    version = adapter.get_version()
+                    self.assertIn("0.7.0", version)
+
+    def test_22_geniex_non_interactive_execution_and_telemetry(self):
+        """22. Verifies GenieRuntimeAdapter non-interactive --input execution and telemetry extraction."""
+        adapter = GenieRuntimeAdapter()
+        adapter._is_present = True
+        adapter._executable_path = r"C:\fake\geniex.exe"
+
+        sample_stdout = (
+            "⏳ Loading model...\n"
+            "🤖 Model ready\n"
+            "encoding...I am AIGIS, an autonomous on-device personal AI assistant running on Snapdragon Hexagon NPU.\n\n"
+            "— 21.7 tok/s • 44 tok • 0.1 s first token —\n"
+        )
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout=sample_stdout,
+                stderr=""
+            )
+
+            reply, tokens, latency, meta = adapter.execute_dialog(
+                config_path="dummy_config.json",
+                formatted_prompt="<|im_start|>user\nHello<|im_end|>",
+                max_tokens=128
+            )
+
+            # Check that subprocess.run was called with non-interactive --input flag
+            self.assertTrue(mock_run.called)
+            call_args = mock_run.call_args[0][0]
+            self.assertEqual(call_args[0], r"C:\fake\geniex.exe")
+            self.assertEqual(call_args[1], "infer")
+            self.assertEqual(call_args[2], "ai-hub-models/Qwen3-4B-Instruct-2507")
+            self.assertEqual(call_args[3], "--compute")
+            self.assertEqual(call_args[4], "npu")
+            self.assertEqual(call_args[5], "--input")
+            temp_file_arg = call_args[6]
+            self.assertTrue(temp_file_arg.endswith(".txt"))
+            # Temporary file should have been cleaned up
+            self.assertFalse(os.path.exists(temp_file_arg))
+            self.assertEqual(call_args[7], "--max-tokens")
+            self.assertEqual(call_args[8], "128")
+
+            # Check response text and parsed telemetry
+            self.assertEqual(reply, "I am AIGIS, an autonomous on-device personal AI assistant running on Snapdragon Hexagon NPU.")
+            self.assertEqual(tokens, 44)
+            self.assertEqual(meta.get("decode_tok_per_sec"), 21.7)
+            self.assertEqual(meta.get("ttft_sec"), 0.1)
+            self.assertEqual(meta.get("backend"), "QnnHtp")
+            self.assertEqual(meta.get("target"), "Qualcomm Hexagon NPU")
+            self.assertTrue(meta.get("hardware_valid"))
+            self.assertFalse(meta.get("simulated"))
+
+    def test_23_geniex_error_handling(self):
+        """23. Verifies GenieRuntimeAdapter handles non-zero exit code truthfully."""
+        adapter = GenieRuntimeAdapter()
+        adapter._is_present = True
+        adapter._executable_path = r"C:\fake\geniex.exe"
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=1,
+                stdout="",
+                stderr="Error: Model bundle corrupted."
+            )
+
+            reply, tokens, latency, meta = adapter.execute_dialog(
+                config_path="dummy_config.json",
+                formatted_prompt="<|im_start|>user\nHello<|im_end|>",
+                max_tokens=64
+            )
+
+            self.assertIsNone(reply)
+            self.assertEqual(tokens, 0)
+            self.assertIn("Error: Model bundle corrupted.", meta.get("error", ""))
+
+    def test_24_competition_system_prompt_construction(self):
+        """24. Verifies AIGIS competition system prompt construction, isolation, and ChatML injection."""
+        self.assertIn("powered by Qualcomm Snapdragon", AIGIS_COMPETITION_SYSTEM_PROMPT)
+        self.assertIn("friendly and autonomous on-device personal AI assistant", AIGIS_COMPETITION_SYSTEM_PROMPT)
+        self.assertIn("Prioritize concise, clear answers", AIGIS_COMPETITION_SYSTEM_PROMPT)
+        self.assertIn("Your name is AIGIS.", AIGIS_COMPETITION_SYSTEM_PROMPT)
+
+        # Default getter returns competition prompt
+        prompt = get_competition_system_prompt()
+        self.assertEqual(prompt, AIGIS_COMPETITION_SYSTEM_PROMPT)
+
+        # Environment variable override
+        with patch.dict(os.environ, {"AIGIS_SYSTEM_PROMPT": "Custom Competition Prompt"}):
+            self.assertEqual(get_competition_system_prompt(), "Custom Competition Prompt")
+
+        # Provider default injection
+        provider = GenieQwenProvider()
+        formatted = provider.format_chatml_prompt("Hello AIGIS")
+        self.assertIn(f"<|im_start|>system\n{AIGIS_COMPETITION_SYSTEM_PROMPT}<|im_end|>", formatted)
+
+    def test_25_snapdragon_engine_telemetry_propagation_and_fallback(self):
+        """25. Verifies telemetry metadata bubbles up to EngineResponse on hardware, and falls back to CPU on Intel."""
+        # A. On current Intel host: verify truthful fallback to SmolLM2
+        engine_with_fallback = SnapdragonNPUEngine(
+            hardware_detector=HardwareDetector,
+            fallback_engine=self.router.local_engine,
+            auto_fallback=True
+        )
+        resp = engine_with_fallback.generate_response("What time is it?", fallback=True)
+        self.assertTrue(resp.metadata.get("fallback_triggered"))
+        self.assertFalse(resp.metadata.get("hardware_valid"))
+        self.assertFalse(resp.metadata.get("simulated"))
+        self.assertIn("Local", resp.metadata.get("fallback_engine", ""))
+
+        # B. On simulated physical hardware: verify telemetry metadata merging
+        mock_runner = MagicMock()
+        mock_runner.inspect_capabilities.return_value = SnapdragonCapabilityReport(
+            state=SnapdragonRuntimeState.FULLY_CONFIGURED,
+            state_description="Snapdragon Hexagon NPU verified",
+            is_available=True,
+            architecture="arm64",
+            is_arm64=True,
+            is_snapdragon_cpu=True,
+            qnn_provider_available=True,
+            qairt_runtime_available=True,
+            genie_runtime_available=True,
+            model_artifact_found=True,
+            model_dir=r"C:\fake\model"
+        )
+        mock_runner.run_inference.return_value = (
+            "Response from Snapdragon NPU",
+            44,
+            120,
+            {
+                "decode_tok_per_sec": 21.7,
+                "ttft_sec": 0.1,
+                "backend": "QnnHtp",
+                "target": "Qualcomm Hexagon NPU"
+            }
+        )
+        engine_hw = SnapdragonNPUEngine(
+            hardware_detector=MagicMock(),
+            runner=mock_runner
+        )
+        resp_hw = engine_hw.generate_response("Test prompt")
+        self.assertEqual(resp_hw.reply, "Response from Snapdragon NPU")
+        self.assertEqual(resp_hw.metadata.get("decode_tok_per_sec"), 21.7)
+        self.assertEqual(resp_hw.metadata.get("ttft_sec"), 0.1)
+        self.assertEqual(resp_hw.metadata.get("backend"), "QnnHtp")
+        self.assertTrue(resp_hw.metadata.get("hardware_valid"))
+        self.assertFalse(resp_hw.metadata.get("simulated"))
+
+    def test_26_geniex_localappdata_discovery(self):
+        """26. Verifies discovery of geniex.exe in %LOCALAPPDATA%\\GenieX CLI."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            cli_dir = os.path.join(tmp_dir, "GenieX CLI")
+            os.makedirs(cli_dir, exist_ok=True)
+            fake_exe = os.path.join(cli_dir, "geniex.exe")
+            with open(fake_exe, "w") as f:
+                f.write("echo off\n")
+
+            with patch.dict(os.environ, {"LOCALAPPDATA": tmp_dir}):
+                adapter = GenieRuntimeAdapter()
+                self.assertTrue(adapter.is_runtime_present)
+                self.assertEqual(adapter.executable_path, fake_exe)
+
+    def test_27_model_cache_discovery(self):
+        """27. Verifies ~/.cache/geniex/models/qualcomm/Qwen3-4B-Instruct-2507 discovery."""
+        with tempfile.TemporaryDirectory() as tmp_home:
+            cache_model_dir = os.path.join(
+                tmp_home, ".cache", "geniex", "models", "qualcomm", "Qwen3-4B-Instruct-2507"
+            )
+            os.makedirs(cache_model_dir, exist_ok=True)
+
+            with patch("os.path.expanduser", side_effect=lambda p: os.path.normpath(p.replace("~", tmp_home))):
+                provider = GenieQwenProvider()
+                self.assertEqual(os.path.normpath(provider.model_dir), os.path.normpath(cache_model_dir))
+
+                runner = QualcommModelRunner()
+                self.assertEqual(os.path.normpath(runner.model_dir), os.path.normpath(cache_model_dir))
+
+    def test_28_deterministic_clock_queries_bypass_llm(self):
+        """28. Verifies all natural time query variations resolve via local OS clock without invoking LLM."""
+        from datetime import datetime
+        now = datetime.now()
+        expected_hour_min = now.strftime("%I:%M")
+
+        time_variations = [
+            "What time is it?",
+            "What is the current time?",
+            "Tell me the current time",
+            "what's the time?",
+            "What is the time?",
+            "what is the time right now",
+            "tell me the time",
+            "the time",
+            "current time",
+            "time please",
+            "what time is it now",
+            "AIGIS, what time is it?",
+            "What time is it, AIGIS?",
+            "Hey AIGIS, what is the current time?"
+        ]
+
+        for query in time_variations:
+            with self.subTest(query=query):
+                resp = self.router.route_and_generate(query)
+                self.assertEqual(resp.engine, "local")
+                self.assertFalse(resp.metadata.get("networkUsed", True))
+                self.assertEqual(resp.metadata.get("intent"), "time")
+                self.assertIn("current time is", resp.reply.lower())
+                # Verify actual local OS clock hour and minute is in the response
+                self.assertIn(expected_hour_min, resp.reply)
+
+    def test_29_deterministic_date_and_combined_queries(self):
+        """29. Verifies date and combined time+date queries resolve deterministically from OS clock."""
+        from datetime import datetime
+        now = datetime.now()
+        expected_day = now.strftime("%A")
+        expected_month = now.strftime("%B")
+
+        date_variations = [
+            "What's today's date?",
+            "What is the date today?",
+            "Tell me the date",
+            "What day is today?",
+            "What day is it?"
+        ]
+
+        for query in date_variations:
+            with self.subTest(query=query):
+                resp = self.router.route_and_generate(query)
+                self.assertEqual(resp.engine, "local")
+                self.assertFalse(resp.metadata.get("networkUsed", True))
+                self.assertEqual(resp.metadata.get("intent"), "date")
+                self.assertIn(expected_day, resp.reply)
+                self.assertIn(expected_month, resp.reply)
+
+        # Combined time and date query
+        combo_resp = self.router.route_and_generate("What time and date is it?")
+        self.assertEqual(combo_resp.engine, "local")
+        self.assertEqual(combo_resp.metadata.get("intent"), "time_date")
+        self.assertIn(expected_day, combo_resp.reply)
+        self.assertIn(now.strftime("%I:%M"), combo_resp.reply)
+
+    def test_30_snapdragon_npu_runner_never_invoked_for_clock_queries(self):
+        """30. Verifies Snapdragon NPU LLM runner is NEVER invoked for live clock queries, but IS for general AI."""
+        mock_runner = MagicMock()
+        mock_snapdragon = SnapdragonNPUEngine(
+            hardware_detector=HardwareDetector,
+            runner=mock_runner
+        )
+        # Mock fully configured hardware state where runner is normally used
+        mock_snapdragon.get_capability_report = MagicMock(return_value=SnapdragonCapabilityReport(
+            state=SnapdragonRuntimeState.FULLY_CONFIGURED,
+            state_description="Qualcomm Hexagon NPU verified",
+            is_available=True,
+            architecture="arm64",
+            is_arm64=True,
+            is_snapdragon_cpu=True,
+            qnn_provider_available=True,
+            qairt_runtime_available=True,
+            genie_runtime_available=True,
+            model_artifact_found=True,
+            model_dir=r"C:\fake\model"
+        ))
+
+        router = IntentTaskRouter(
+            hardware_detector=HardwareDetector,
+            snapdragon_engine=mock_snapdragon,
+            competition_mode=True
+        )
+
+        # 1. Clock queries MUST NOT invoke LLM runner
+        resp_time = router.route_and_generate("What time is it?")
+        self.assertEqual(resp_time.engine, "local")
+        self.assertIn("current time is", resp_time.reply.lower())
+        self.assertEqual(mock_runner.run_inference.call_count, 0, "LLM runner must NOT be invoked for clock queries!")
+
+        resp_curr = router.route_and_generate("What is the current time?")
+        self.assertEqual(resp_curr.engine, "local")
+        self.assertEqual(mock_runner.run_inference.call_count, 0, "LLM runner must NOT be invoked for current time!")
+
+        # 2. General AI queries MUST route to LLM runner
+        mock_runner.run_inference.return_value = ("Quantum computing uses qubits, sir.", 15, 45, {})
+        resp_gen = router.route_and_generate("Explain quantum computing in one sentence")
+        self.assertGreater(mock_runner.run_inference.call_count, 0, "LLM runner MUST be invoked for general AI prompts!")
+        self.assertIn("qubits", resp_gen.reply)
+
+    def test_31_conversational_and_conceptual_queries_route_to_llm(self):
+        """31. Verifies conversational greetings and time-concept queries (e.g. time dilation) route to LLM, not clock."""
+        # A. Greeting prompt (e.g., 'HLO AIGIS') classifies as GENERAL_AI, not SYSTEM_INFO
+        cls_greeting = self.router.classify_intent("HLO AIGIS")
+        self.assertEqual(cls_greeting["intent"], "GENERAL_AI")
+
+        # B. Conceptual time query (e.g., 'Explain time dilation') classifies as GENERAL_AI
+        cls_dilation = self.router.classify_intent("Explain time dilation")
+        self.assertEqual(cls_dilation["intent"], "GENERAL_AI")
+
+        # C. Story about time travel
+        cls_story = self.router.classify_intent("Tell me a story about time travel")
+        self.assertEqual(cls_story["intent"], "GENERAL_AI")
+
+    def test_32_remote_location_queries_in_competition_mode(self):
+        """32. Verifies queries for remote timezones (e.g., 'What time is it in Tokyo?') do not use local clock or cloud."""
+        from datetime import datetime
+        now = datetime.now()
+        local_hour_min = now.strftime("%I:%M %p")
+
+        remote_queries = [
+            "What time is it in Tokyo?",
+            "What time is it in New York?",
+            "What is the current time in London?"
+        ]
+
+        for q in remote_queries:
+            with self.subTest(query=q):
+                resp = self.router.route_and_generate(q)
+                self.assertEqual(resp.engine, "local")
+                self.assertFalse(resp.metadata.get("networkUsed", True))
+                # Must NOT output local OS clock time as the answer for a remote city
+                self.assertNotIn(local_hour_min, resp.reply)
+                # Truthful local-only limitation in Competition Mode
+                self.assertIn("cannot be verified in competition local-only mode", resp.reply.lower())
+
 
 if __name__ == "__main__":
     unittest.main()
+
+

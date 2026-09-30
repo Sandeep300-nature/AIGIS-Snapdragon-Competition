@@ -30,7 +30,17 @@ from desktop_control import DesktopActionService
 from workflow_scheduler import WorkflowEngine
 from deep_doc_search import DeepDocSearchEngine
 from hardware.detector import HardwareDetector
-from engine import IntentTaskRouter, LocalEngine, CloudEngine, EngineResponse, LocalSTTService
+from engine import (
+    IntentTaskRouter,
+    LocalEngine,
+    CloudEngine,
+    EngineResponse,
+    LocalSTTService,
+    parse_time_date_query,
+    build_time_date_response,
+    parse_telemetry_query,
+    build_telemetry_response
+)
 
 try:
     from privacy import PrivacyGuard, PrivacyMode
@@ -225,41 +235,46 @@ def generate_ai_response(req: ChatGenerateRequest):
     lowered_prompt = raw_user_prompt.lower().strip()
 
     # Deterministic Local System Time & Date Interceptor (No LLM, Web Search, or Tavily dependency)
-    # Exclude remote location/city queries (e.g. "What time is it in New York?")
-    has_remote_location = any(kw in lowered_prompt for kw in [" in ", " at ", " for "]) and not any(kw in lowered_prompt for kw in ["in india", "in my location", "in my area", "in local time"])
+    is_time_query, is_date_query, is_remote_location = parse_time_date_query(raw_user_prompt)
 
-    if not has_remote_location:
-        is_time_query = any(pattern in lowered_prompt for pattern in [
-            "what time is it", "what is the time", "current time", "tell me the time",
-            "what's the time", "local time", "time now", "clock time", "the time"
-        ]) or lowered_prompt in ["time", "current time", "what time is it?", "local time"]
+    if not is_remote_location and (is_time_query or is_date_query):
+        reply_text, intent_tag = build_time_date_response(is_time_query, is_date_query, now)
+        print(f"\n[LOCAL TIME INTERCEPTOR] Handled locally via datetime.now() -> '{reply_text}'")
+        save_memory_to_spring_boot(session_id, "user", raw_user_prompt)
+        save_memory_to_spring_boot(session_id, "assistant", reply_text)
+        state_manager.update_state(session_id, raw_user_prompt, reply_text, "TIME_LOCAL")
+        return ChatGenerateResponse(
+            reply=reply_text,
+            provider="Python AI Engine -> System Clock",
+            sessionId=session_id,
+            ragContextUsed=False,
+            webSearchUsed=False,
+            urlToOpen=None
+        )
 
-        is_date_query = any(pattern in lowered_prompt for pattern in [
-            "what's today's date", "what is today's date", "today's date", "todays date",
-            "what day is it", "what day is today", "current date", "tell me the date",
-            "what's the date", "what date is it", "date today", "today date"
-        ]) or lowered_prompt in ["date", "today's date", "what day is it?", "current date"]
-
-        if is_time_query or is_date_query:
-            if is_time_query and is_date_query:
-                reply_text = f"It is {now.strftime('%I:%M %p')} on {now.strftime('%A, %B %d, %Y')}, sir."
-            elif is_time_query:
-                reply_text = f"The current time is {now.strftime('%I:%M %p')}, sir."
-            else:
-                reply_text = f"Today is {now.strftime('%A, %B %d, %Y')}, sir."
-
-            print(f"\n[LOCAL TIME INTERCEPTOR] Handled locally via datetime.now() -> '{reply_text}'")
-            save_memory_to_spring_boot(session_id, "user", raw_user_prompt)
-            save_memory_to_spring_boot(session_id, "assistant", reply_text)
-            state_manager.update_state(session_id, raw_user_prompt, reply_text, "TIME_LOCAL")
-            return ChatGenerateResponse(
-                reply=reply_text,
-                provider="Python AI Engine -> System Clock",
-                sessionId=session_id,
-                ragContextUsed=False,
-                webSearchUsed=False,
-                urlToOpen=None
-            )
+    # Deterministic Local Hardware Telemetry Interceptor (No LLM dependency)
+    if parse_telemetry_query(raw_user_prompt):
+        reply_text, _ = build_telemetry_response()
+        print(f"\n[LOCAL TELEMETRY INTERCEPTOR] Handled locally via HardwareDetector -> '{reply_text}'")
+        save_memory_to_spring_boot(session_id, "user", raw_user_prompt)
+        save_memory_to_spring_boot(session_id, "assistant", reply_text)
+        state_manager.update_state(session_id, raw_user_prompt, reply_text, "HARDWARE_TELEMETRY")
+        return ChatGenerateResponse(
+            reply=reply_text,
+            provider="Python AI Engine -> HardwareDetector",
+            sessionId=session_id,
+            ragContextUsed=False,
+            webSearchUsed=False,
+            urlToOpen=None,
+            isOffline=True,
+            metadata={
+                "engine": "local",
+                "privacyMode": "LOCAL_ONLY",
+                "networkUsed": False,
+                "privateContextUsed": False,
+                "privacyIntent": "PUBLIC"
+            }
+        )
 
     # 1. Active Conversation State Context Resolution & Meta-Question Interceptor (Parts 4 & 5)
     resolved_prompt, meta_override = state_manager.resolve_context(session_id, raw_user_prompt)
@@ -830,172 +845,17 @@ def get_ai_engine_status():
 
 @app.get("/api/v1/telemetry")
 def get_system_telemetry():
-    global _telemetry_last_time, _telemetry_last_disk_io, _telemetry_last_net_io
-
-    now = time.time()
-    elapsed = max(0.1, now - _telemetry_last_time)
-    _telemetry_last_time = now
-
-    # 1. CPU Metrics
-    cpu_percent = psutil.cpu_percent(interval=None)
-    cpu_freq = psutil.cpu_freq()
-    clock_speed_ghz = round(cpu_freq.current / 1000.0, 2) if (cpu_freq and cpu_freq.current) else 2.5
-    cpu_temp = "N/A"
-    try:
-        temps = psutil.sensors_temperatures()
-        if temps and 'coretemp' in temps and temps['coretemp']:
-            cpu_temp = int(temps['coretemp'][0].current)
-    except Exception:
-        cpu_temp = "N/A"
-
-    # 2. Memory / RAM Metrics
-    vm = psutil.virtual_memory()
-    ram_used_gb = round(vm.used / (1024**3), 1)
-    ram_total_gb = round(vm.total / (1024**3), 1)
-    ram_percent = round(vm.percent, 1)
-
-    # 3. Storage Metrics (C: Drive & I/O)
-    try:
-        disk = psutil.disk_usage('C:')
-        disk_used_gb = round(disk.used / (1024**3), 1)
-        disk_total_gb = round(disk.total / (1024**3), 1)
-        disk_percent = round(disk.percent, 1)
-    except Exception:
-        disk_used_gb = 0.0
-        disk_total_gb = 0.0
-        disk_percent = 0.0
-
-    curr_disk_io = psutil.disk_io_counters()
-    if curr_disk_io and _telemetry_last_disk_io:
-        read_bytes = curr_disk_io.read_bytes - _telemetry_last_disk_io.read_bytes
-        write_bytes = curr_disk_io.write_bytes - _telemetry_last_disk_io.write_bytes
-        disk_read_kb = read_bytes / elapsed / 1024.0
-        disk_write_kb = write_bytes / elapsed / 1024.0
-    else:
-        disk_read_kb = 0.0
-        disk_write_kb = 0.0
-    _telemetry_last_disk_io = curr_disk_io
-
-    disk_read_str = f"{round(disk_read_kb / 1024.0, 1)} MB/s" if disk_read_kb > 1024 else f"{int(disk_read_kb)} KB/s"
-    disk_write_str = f"{round(disk_write_kb / 1024.0, 1)} MB/s" if disk_write_kb > 1024 else f"{int(disk_write_kb)} KB/s"
-
-    # 4. Network Metrics
-    curr_net_io = psutil.net_io_counters()
-    if curr_net_io and _telemetry_last_net_io:
-        rx_bytes = curr_net_io.bytes_recv - _telemetry_last_net_io.bytes_recv
-        tx_bytes = curr_net_io.bytes_sent - _telemetry_last_net_io.bytes_sent
-        down_kb = rx_bytes / elapsed / 1024.0
-        up_kb = tx_bytes / elapsed / 1024.0
-    else:
-        down_kb = 0.0
-        up_kb = 0.0
-    _telemetry_last_net_io = curr_net_io
-
-    down_str = f"{round(down_kb / 1024.0, 1)} MB/s" if down_kb > 1024 else f"{int(down_kb)} KB/s"
-    up_str = f"{round(up_kb / 1024.0, 1)} MB/s" if up_kb > 1024 else f"{int(up_kb)} KB/s"
-
-    # 5. GPU Metrics (via live nvidia-smi query only - ZERO fabrication)
-    gpu_name = "None detected"
-    gpu_usage = 0
-    gpu_temp = "N/A"
-    vram_used_gb = 0.0
-    vram_total_gb = 0.0
-    vram_str = "N/A"
-
-    try:
-        cmd = ['nvidia-smi', '--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total,name', '--format=csv,noheader,nounits']
-        smi_out = subprocess.check_output(cmd, timeout=1.5).decode('utf-8').strip()
-        parts = [p.strip() for p in smi_out.split(',')]
-        if len(parts) >= 5:
-            gpu_usage = int(parts[0])
-            gpu_temp = int(parts[1])
-            vram_used_gb = round(float(parts[2]) / 1024.0, 1)
-            vram_total_gb = round(float(parts[3]) / 1024.0, 1)
-            vram_str = f"{vram_used_gb} / {vram_total_gb} GB"
-            gpu_name = parts[4].replace("NVIDIA GeForce ", "").replace(" Laptop GPU", "").replace(" GPU", "")
-    except Exception:
-        pass
-
-    # 6. System Uptime, Battery, Processes & Threads
-    boot_time = psutil.boot_time()
-    uptime_sec = int(now - boot_time)
-    days = uptime_sec // 86400
-    hours = (uptime_sec % 86400) // 3600
-    mins = (uptime_sec % 3600) // 60
-    if days > 0:
-        uptime_str = f"{days}d {hours}h"
-    elif hours > 0:
-        uptime_str = f"{hours}h {mins}m"
-    else:
-        uptime_str = f"{mins}m"
-
-    battery = psutil.sensors_battery()
-    if battery:
-        plugged_str = " (AC)" if battery.power_plugged else ""
-        battery_str = f"{int(battery.percent)}%{plugged_str}"
-    else:
-        battery_str = "100% (AC)"
-
-    try:
-        pids_count = len(psutil.pids())
-    except Exception:
-        pids_count = 312
-
-    active_threads = 3450
-
-    # 7. Session Duration
-    sess_sec = int(now - _telemetry_start_time)
-    shours = sess_sec // 3600
-    smins = (sess_sec % 3600) // 60
-    ssecs = sess_sec % 60
-    session_dur_str = f"{shours}h {smins}m" if shours > 0 else f"{smins}m {ssecs}s"
-
-    return {
-        "cpu": {
-            "usage": int(cpu_percent),
-            "temp": cpu_temp,
-            "clockSpeed": f"{clock_speed_ghz} GHz"
-        },
-        "gpu": {
-            "name": gpu_name,
-            "usage": gpu_usage,
-            "temp": gpu_temp,
-            "vramUsed": vram_used_gb,
-            "vramTotal": vram_total_gb,
-            "vramStr": f"{vram_used_gb} / {vram_total_gb} GB"
-        },
-        "memory": {
-            "ramUsed": ram_used_gb,
-            "ramTotal": ram_total_gb,
-            "ramStr": f"{ram_used_gb} / {ram_total_gb} GB",
-            "usage": ram_percent
-        },
-        "storage": {
-            "cDriveUsed": disk_used_gb,
-            "cDriveTotal": disk_total_gb,
-            "cDriveStr": f"{disk_used_gb} / {disk_total_gb} GB",
-            "usage": disk_percent,
-            "readSpeed": disk_read_str,
-            "writeSpeed": disk_write_str
-        },
-        "network": {
-            "downloadSpeed": down_str,
-            "uploadSpeed": up_str,
-            "ping": "24 ms"
-        },
-        "aigis": {
-            "aiModel": "Groq (llama-3.3-70b)",
-            "voice": "ElevenLabs (Rachel)",
-            "lastResponseTime": "250 ms",
-            "sessionDuration": session_dur_str
-        },
-        "system": {
-            "uptime": uptime_str,
-            "battery": battery_str,
-            "processCount": pids_count,
-            "activeThreads": active_threads
-        }
-    }
+    """
+    Returns verified, live system telemetry payload.
+    Uses unified HardwareDetector.get_system_telemetry as the single source of truth.
+    """
+    active_engine = ai_router.get_active_local_engine()
+    engine_label = (
+        active_engine.get_engine_info().get("accelerator")
+        or active_engine.get_engine_info().get("provider")
+        or "Local Engine"
+    ) if hasattr(active_engine, "get_engine_info") else "Local Engine"
+    return HardwareDetector.get_system_telemetry(active_engine_label=engine_label)
 
 # ==========================================
 # DEEP DOCUMENT SEARCH & INDEX REST API
