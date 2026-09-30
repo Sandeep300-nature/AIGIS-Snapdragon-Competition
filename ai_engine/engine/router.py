@@ -347,7 +347,8 @@ class IntentTaskRouter:
         # Resolves via local OS clock, date, and hardware telemetry.
         # =========================================================================
         if intent == "SYSTEM_INFO":
-            resp = self.local_engine.generate_response(
+            active_engine = self.get_active_local_engine()
+            resp = active_engine.generate_response(
                 prompt=prompt,
                 session_id=session_id,
                 response_language=response_language,

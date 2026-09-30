@@ -181,6 +181,7 @@ def parse_telemetry_query(query: str) -> bool:
     if not query:
         return False
     raw = str(query).strip().lower()
+    raw = raw.replace("’", "'").replace("‘", "'").replace("`", "'").replace("“", '"').replace("”", '"')
     cleaned = re.sub(r"[?!.,;:]+", " ", raw)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
 
@@ -196,31 +197,35 @@ def parse_telemetry_query(query: str) -> bool:
         r"\b(?:system\s+)?telemetry\b",
         r"\b(?:system|hardware|device|machine|workstation)\s+(?:status|specs?|specifications|metrics|info|information)\b",
         r"\btell\s+me\s+about\s+(?:my\s+|the\s+|this\s+)?(?:system|machine|device|workstation|pc|hardware)\b",
-        r"\bwhat(?:\x27s|\s+is)\s+(?:happening|going\s+on)\s+(?:in|on|with)\s+(?:my|the|this)?\s*(?:system|machine|pc|workstation)\b",
-        r"\bwhat(?:\x27s|\s+is)?\s+happening\s+on\s+(?:my|this)\s+(?:machine|system|device|pc)\b",
+        r"\bwhat(?:\x27s|'s|\s+is)\s+(?:happening|going\s+on)\s+(?:in|on|with)\s+(?:my|the|this)?\s*(?:system|machine|pc|workstation)\b",
+        r"\bwhat(?:\x27s|'s|\s+is)?\s+happening\s+on\s+(?:my|this)\s+(?:machine|system|device|pc)\b",
         r"\bshow\s+(?:me\s+)?(?:my\s+|the\s+)?hardware\s+(?:status|telemetry|specs?)\b",
         r"\bcan\s+(?:u|you)\s+tell\s+me\s+(?:my\s+|the\s+)?system\s+telemetry\b",
-        r"\bcan\s+(?:u|you)\s+tell\s+me\s+what(?:\x27s|\s+is)\s+happening\s+in\s+my\s+system\b",
+        r"\bcan\s+(?:u|you)\s+tell\s+me\s+what(?:\x27s|'s|\s+is)\s+happening\s+in\s+my\s+system\b",
         r"\bwhat\s+is\s+my\s+system\s+status\b",
-        r"\bwhat(?:\x27s|\s+is)\s+(?:my\s+|the\s+)?system\s+status\b",
+        r"\bwhat(?:\x27s|'s|\s+is)\s+(?:my\s+|the\s+)?system\s+status\b",
         r"\b(?:my|the|our|this)\s+(?:hardware|telemetry|specs?|specifications)\b",
         r"\bwhat\s+(?:hardware|specs?|specifications)\s+(?:do\s+(?:i|we|you)\s+have|are\s+(?:you|we)\s+using|are\s+you\s+running\s+on|am\s+i\s+(?:using|on|running\s+on))\b",
         r"\bwhat\s+(?:machine|device|system|pc)\s+(?:are\s+you|am\s+i)\s+(?:running|executing)\s+on\b",
         r"\bwhat\s+hardware\s+(?:are\s+you|am\s+i|is\s+this|is\s+detected|is\s+installed)\b",
         r"\bwhat\s+are\s+you\s+running\s+on\b",
-        r"\bwhat\s+are\s+(?:my|your|our|the)\s+specs\b",
+        r"\bwhat\s+are\s+(?:my\s+|your\s+|our\s+|the\s+)?(?:system\s+)?specs\b",
     ]
     if any(re.search(p, cleaned) for p in gen_patterns):
         return True
 
     # 3. Component inquiries with personal context or direct state queries
     comp_patterns = [
-        r"\bwhat(?:\x27s|\s+is)\s+(?:my\s+|the\s+|our\s+)?(?:cpu|gpu|ram|storage|battery|architecture|vram|processor|graphics)\b",
-        r"\bwhat\s+(?:cpu|gpu|processor|graphics(?:\s+card)?)\s+(?:do\s+i\s+have|am\s+i\s+using|do\s+we\s+have|is\s+(?:this|installed|detected))\b",
-        r"\bhow\s+much\s+(?:ram|storage|memory|disk\s+space|vram|gpu\s+memory)\s+(?:do\s+i\s+have|am\s+i\s+using|is\s+(?:used|free|available|left|remaining))\b",
-        r"\bwhat(?:\x27s|\s+is)?(?:\s+(?:the|my|current))?\s+(?:ram|cpu|gpu|storage|disk|memory|vram)\s+(?:usage|utilization|load|temp|temperature)\b",
-        r"\bwhat(?:\x27s|\s+is)\s+(?:my\s+|the\s+)?(?:cpu|gpu)\s+temp(?:erature)?\b",
-        r"\bwhat\s+is\s+(?:my\s+|the\s+)?(?:cpu|gpu)\s+temperature\b",
+        r"\bwhat(?:\x27s|'s|\s+is)\s+(?:my\s+|the\s+|our\s+)?(?:cpu|gpu|ram|storage|battery|architecture|vram|processor|graphics)\b",
+        r"\bwhat\s+(?:cpu|gpu|processor|graphics(?:\s+card)?|video\s+card)\s+(?:do\s+i\s+have|am\s+i\s+using|do\s+we\s+have|is\s+(?:this|installed|detected))\b",
+        r"\bhow\s+much\s+(?:ram|storage|memory|disk\s+space|vram|gpu\s+memory|space)\s+(?:do\s+i\s+have|am\s+i\s+using|is\s+(?:used|free|available|left|remaining))\b",
+        r"\bhow\s+much\s+space\s+is\s+(?:free|left|available)\s+(?:on|in)\s+(?:c|c:|c\s+drive|drive|disk)\b",
+        r"\bwhat(?:\x27s|'s|\s+is)?(?:\s+(?:the|my|current))?\s+(?:ram|cpu|gpu|storage|disk|memory|vram)\s+(?:usage|utilization|load|temp|temperature)\b",
+        r"\bwhat(?:\x27s|'s|\s+is)\s+(?:my\s+|the\s+)?(?:cpu|gpu|processor|graphics)\s+temp(?:erature)?\b",
+        r"\bwhat\s+is\s+(?:my\s+|the\s+)?(?:cpu|gpu|processor|graphics)\s+temperature\b",
+        r"\bhow\s+hot\s+(?:is|are)\s+(?:my\s+|the\s+|this\s+)?(?:cpu|gpu|processor|graphics|system|machine|device|laptop)\b",
+        r"\b(?:what(?:\x27s|'s|\s+is)\s+(?:the\s+|my\s+)?)?(?:temp|temperature)\s+of\s+(?:my\s+|the\s+)?(?:cpu|gpu|processor|graphics|system|machine)\b",
+        r"\bis\s+(?:my\s+|the\s+)?(?:cpu|gpu|processor|graphics|system)\s+(?:hot|overheating)\b",
         r"\btell\s+me\s+my\s+cpu\s+and\s+gpu\b",
         r"\b(?:cpu\s+and\s+gpu|gpu\s+and\s+cpu)\b",
         r"\b(?:is|are)\s+(?:the\s+|my\s+)?(?:snapdragon|npu|hexagon|gpu|cpu|cuda|accelerator)\s+(?:detected|active|available|running|present)\b",
@@ -242,13 +247,15 @@ def get_telemetry_focus(query: str) -> str:
     """
     if not query:
         return "all"
-    cleaned = re.sub(r"[?!.,;:]+", " ", str(query).lower()).strip()
+    raw = str(query).strip().lower()
+    raw = raw.replace("’", "'").replace("‘", "'").replace("`", "'")
+    cleaned = re.sub(r"[?!.,;:]+", " ", raw).strip()
 
     # Temperature specific
-    if "temperature" in cleaned or " temp" in cleaned or "temp " in cleaned:
-        if "cpu" in cleaned or "processor" in cleaned:
+    if any(k in cleaned for k in ["temperature", "temp", "hot", "thermal", "overheat"]):
+        if any(c in cleaned for c in ["cpu", "processor"]):
             return "temperature_cpu"
-        elif "gpu" in cleaned or "graphics" in cleaned:
+        elif any(g in cleaned for g in ["gpu", "graphics", "video card", "display card"]):
             return "temperature_gpu"
         return "temperature"
 
@@ -273,7 +280,7 @@ def get_telemetry_focus(query: str) -> str:
         return "gpu_usage"
 
     # GPU specific
-    if any(k in cleaned for k in ["gpu", "graphics"]):
+    if any(k in cleaned for k in ["gpu", "graphics", "video card", "display card"]):
         return "gpu"
 
     # Memory / RAM specific
@@ -299,8 +306,10 @@ def get_telemetry_focus(query: str) -> str:
     # Host hardware specific
     if any(p in cleaned for p in [
         "hardware are you", "are you running on", "machine are you", "what hardware",
-        "what are you running on", "what machine", "my specs", "your specs", "our specs"
-    ]):
+        "what are you running on", "what machine", "my specs", "your specs", "our specs",
+        "system specs", "hardware specs", "machine specs", "system info",
+        "about my system", "tell me about my system", "what are my specs"
+    ]) or re.search(r"\b(?:what\s+are\s+)?(?:my\s+|the\s+)?(?:system\s+)?specs\b", cleaned):
         return "host_hardware"
 
     return "all"

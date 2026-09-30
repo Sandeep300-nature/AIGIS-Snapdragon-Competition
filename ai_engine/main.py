@@ -254,7 +254,15 @@ def generate_ai_response(req: ChatGenerateRequest):
 
     # Deterministic Local Hardware Telemetry Interceptor (No LLM dependency)
     if parse_telemetry_query(raw_user_prompt):
-        reply_text, _ = build_telemetry_response()
+        active_engine = ai_router.get_active_local_engine()
+        engine_label = (
+            active_engine.get_engine_info().get("accelerator")
+            or active_engine.get_engine_info().get("provider")
+            or "Local Engine"
+        ) if hasattr(active_engine, "get_engine_info") else "Local Engine"
+        telemetry_data = HardwareDetector.get_system_telemetry(active_engine_label=engine_label)
+        caps = HardwareDetector.get_capabilities()
+        reply_text, intent_tag = build_telemetry_response(caps, engine_label, raw_user_prompt, telemetry_data)
         print(f"\n[LOCAL TELEMETRY INTERCEPTOR] Handled locally via HardwareDetector -> '{reply_text}'")
         save_memory_to_spring_boot(session_id, "user", raw_user_prompt)
         save_memory_to_spring_boot(session_id, "assistant", reply_text)
@@ -272,7 +280,11 @@ def generate_ai_response(req: ChatGenerateRequest):
                 "privacyMode": "LOCAL_ONLY",
                 "networkUsed": False,
                 "privateContextUsed": False,
-                "privacyIntent": "PUBLIC"
+                "privacyIntent": "PUBLIC",
+                "intent": "hardware_telemetry",
+                "localTelemetry": True,
+                "telemetry": telemetry_data,
+                "competitionMode": COMPETITION_MODE
             }
         )
 
